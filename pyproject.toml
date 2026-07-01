@@ -1,0 +1,7 @@
+[project]
+name = "2026-1-p-cell-classification"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
