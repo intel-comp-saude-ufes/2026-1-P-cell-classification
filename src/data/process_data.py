@@ -39,9 +39,15 @@ class DataProcessing:
     def label2index(self, label: str):
         return self.labels.index(label)
 
+    def index2label(self, index: int):
+        return self.labels[index]
+    
+    def get_labels(self):
+        return self.labels
+
     def __process_data(self):
         """
-        Constrói uma objeto de dados processado a partir dos metadados do dataset.
+        Constrói um objeto de dados processado a partir dos metadados do dataset.
         
         Também constrói uma lista de labels únicas presentes no dataset.
         """
