@@ -17,9 +17,11 @@ class Hyperparameters:
         num_epochs (int): Número de épocas.
         optimizer (str): Otimizador a ser usado.
         loss_function (str): Função de perda a ser usada.
+        width (int): Largura da imagem.
+        height (int): Altura da imagem.
     """
     learning_rate: float
     batch_size: int
     num_epochs: int
-    optimizer: str
-    loss_function: str
+    width: int
+    height: int

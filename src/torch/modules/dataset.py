@@ -7,7 +7,7 @@ from PIL import Image
 from typing import Callable
 from torch.utils.data import Dataset
 
-from src.data.process_data import DataProcessing
+from src.data.process_data import Cell
 
 
 class CellClassificationDataset(Dataset):
@@ -17,8 +17,8 @@ class CellClassificationDataset(Dataset):
     Args:
         Dataset (Dataset): Classe base do PyTorch para datasets.
     """
-    def __init__(self, data_processer: DataProcessing, width, height, transform: Callable | None = None):
-        self.data_processer = data_processer
+    def __init__(self, data: list[Cell], width, height, transform: Callable | None = None):
+        self.data = data
         self.transform = transform
         
         # Hiperparâmetros
@@ -26,10 +26,10 @@ class CellClassificationDataset(Dataset):
         self.height = height
 
     def __len__(self):
-        return len(self.data_processer)
+        return len(self.data)
     
     def __getitem__(self, idx):
-        cell_info = self.data_processer[idx]
+        cell_info = self.data[idx]
         
         image = Image.open(cell_info.image_path).convert("RGB")
         image = image.crop((cell_info.x, cell_info.y, cell_info.x + self.width, cell_info.y + self.height))

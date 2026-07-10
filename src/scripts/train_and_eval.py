@@ -9,8 +9,10 @@ import logging
 import pandas as pd
 
 from pathlib import Path
-from src.data.process_data import DataProcessing
 from src.config.logging import setup_logging
+from src.data.process_data import DataProcessing
+from src.config.hyperparameters import Hyperparameters
+from src.torch.utils.cross_validate import CrossValidation
 
 
 # ----- Configs
@@ -31,6 +33,23 @@ def main():
     
     logger.info(f"Total de amostras no dataset: {len(data_processor)}")
     logger.info(f"Labels: {data_processor.get_labels()}")
+    
+    # Inicializando hiperparâmetros
+    h_params = Hyperparameters(
+        width=150,
+        height=150,
+        batch_size=32,
+        learning_rate=0.001,
+        num_epochs=10
+    )
+    
+    # Inicialização do Cross Validation
+    cross_val = CrossValidation(data_processor=data_processor, k_folds=5)
+    cross_val.cross_validate(hyperparameters=h_params)
+    
+    # TODO: Pegar o melhor modelo obtido na validação cruzada e testar ele
+    # TODO: A ideia é que o conjunto de teste seja seja salvo em `data_processor`
+    #       para que ele seja usado aqui.
 
 if __name__ == "__main__":
     main()
