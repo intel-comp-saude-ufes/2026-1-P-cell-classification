@@ -38,6 +38,9 @@ class TrainingStrategy():
         batch_size = self.hyperparameters.batch_size
         lr = self.hyperparameters.learning_rate
         num_epochs = self.hyperparameters.num_epochs
+
+        # Verificando a utilização do cuda
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         # TODO: Adicionar transformações nos dados
         
@@ -71,6 +74,7 @@ class TrainingStrategy():
         
         # Instânciando modelo, otimizador e função de custo
         model = CellClassifier()
+        model.to(device)
         
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
         loss_func = nn.CrossEntropyLoss()
@@ -84,6 +88,8 @@ class TrainingStrategy():
             loop_interno = tqdm(train_loader, leave=False, desc='Batches Progress: ')
             for images, labels in loop_interno:
                 # Forward pass na rede
+                images, labels = images.to(device), labels.to(device)
+                
                 outputs = model(images)
                 loss = loss_func(outputs, labels)
                 
