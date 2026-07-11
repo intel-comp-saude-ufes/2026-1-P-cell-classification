@@ -37,6 +37,14 @@ logger = logging.getLogger(__name__)
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
+# Resolução de entrada da EfficientNet-B3. O recorte ao redor do núcleo
+# (width x height) é a região biológica de interesse; já isto é o que a rede
+# espera receber. São coisas diferentes: a B3 foi pré-treinada em 300x300, e
+# alimentá-la na resolução do recorte (100x100) faz os filtros pré-treinados
+# operarem numa escala distinta da que aprenderam, degradando o transfer
+# learning. Por isso redimensionamos o recorte antes de entrar no modelo.
+INPUT_SIZE = 300
+
 
 class TrainingStrategy():
     """
@@ -72,12 +80,17 @@ class TrainingStrategy():
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         # Transformações nos dados.
+        # - Resize (INPUT_SIZE): obrigatório, leva o recorte à resolução em que o
+        #   backbone foi pré-treinado. Vem antes das augmentations para que a
+        #   rotação interpole na resolução final, em vez de ter seu serrilhado
+        #   ampliado pelo upsample posterior.
         # - Normalize (ImageNet): obrigatório, pois o backbone pré-treinado
         #   espera entradas nessa distribuição.
         # - Augmentation (flips/rotação/jitter): aplicado SÓ no treino, como
         #   regularizador contra overfitting.
-        # A validação recebe só ToTensor + Normalize, para ser determinística.
+        # A validação recebe só Resize + ToTensor + Normalize, para ser determinística.
         train_transform = transforms.Compose([
+            transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
             transforms.RandomRotation(20),
@@ -87,6 +100,7 @@ class TrainingStrategy():
         ])
 
         val_transform = transforms.Compose([
+            transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
             transforms.ToTensor(),
             transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ])
@@ -185,6 +199,17 @@ class TrainingStrategy():
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
         # weight=None (padrão) quando não é 'weighted_loss'.
         loss_func = nn.CrossEntropyLoss(weight=class_weight_tensor)
+
+        # Mixed precision (AMP): roda as convoluções em float16 e mantém em
+        # float32 só o que precisa de precisão (a loss, a atualização dos pesos).
+        # Aqui não é só velocidade: em 300x300 com batch 32, o pico de VRAM em
+        # float32 passa de 10 GB e não cabe na placa. Em vez de dar out-of-memory,
+        # o driver despeja o excedente na RAM do sistema — o treino não quebra,
+        # só fica ~12x mais lento. AMP corta o pico pela metade e o problema some.
+        # O GradScaler escala a loss antes do backward para que gradientes
+        # pequenos não virem zero na precisão reduzida.
+        use_amp = device.type == 'cuda'
+        scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
         
         # Estado para early stopping e para guardar o melhor modelo.
         # A seleção é feita pelo F1-macro (maximizar), mais robusto ao
@@ -208,18 +233,22 @@ class TrainingStrategy():
             for images, labels in loop_interno:
                 # Forward pass na rede
                 images, labels = images.to(device), labels.to(device)
-                
-                outputs = model(images)
-                loss = loss_func(outputs, labels)
-                
+
+                with torch.amp.autocast('cuda', enabled=use_amp):
+                    outputs = model(images)
+                    loss = loss_func(outputs, labels)
+
                 train_loss += loss.item()
-                
+
                 # Zerando os gradientes antes da atualização dos pesos
                 optimizer.zero_grad()
-                
-                # Atualizando os pesos e aplicando passo do backpropagation
-                loss.backward()
-                optimizer.step()
+
+                # Atualizando os pesos e aplicando passo do backpropagation.
+                # Com AMP, o backward roda sobre a loss escalada e o scaler
+                # desfaz a escala antes do passo do otimizador.
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
             
             # Avaliação no conjunto de validação
             model.eval()
@@ -231,9 +260,11 @@ class TrainingStrategy():
                 loop_interno_val = tqdm(val_loader, leave=False, desc=' Validation Progress: ')
                 for images, labels in loop_interno_val:
                     images, labels = images.to(device), labels.to(device)
-                    # Forward pass na rede
-                    outputs = model(images)
-                    loss = loss_func(outputs, labels)
+                    # Forward pass na rede. Sem scaler: na validação não há
+                    # backward, então não há gradiente para escalar.
+                    with torch.amp.autocast('cuda', enabled=use_amp):
+                        outputs = model(images)
+                        loss = loss_func(outputs, labels)
 
                     # Obtendo valor da loss de validação
                     val_loss += loss.item()
