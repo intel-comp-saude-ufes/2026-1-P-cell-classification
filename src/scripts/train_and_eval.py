@@ -41,7 +41,9 @@ def main():
         height=150,
         batch_size=32,
         learning_rate=0.001,
-        num_epochs=10
+        num_epochs=10,
+        dropout=0.3,
+        num_classes=6
     )
     
     # Inicialização do Cross Validation

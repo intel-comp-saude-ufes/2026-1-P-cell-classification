@@ -13,7 +13,7 @@ class CellClassifier(nn.Module):
     Args:
         nn (Module): Classe base do PyTorch para modelos de redes neurais.
     """
-    def __init__(self):
+    def __init__(self, dropout, num_classes):
         super().__init__()
         self.cnn_features = models.efficientnet_b3(weights='DEFAULT')
         
@@ -21,7 +21,11 @@ class CellClassifier(nn.Module):
         
         self.cnn_features.classifier = nn.Identity()
 
-        self.fc = nn.Linear(num_features, 6)
+        self.fc = nn.Sequential(
+            nn.Dropout(p=dropout),
+            nn.Linear(num_features, num_classes),
+        )
+
     
     def forward(self, x):
         out = self.cnn_features(x)

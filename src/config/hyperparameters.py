@@ -19,9 +19,13 @@ class Hyperparameters:
         loss_function (str): Função de perda a ser usada.
         width (int): Largura da imagem.
         height (int): Altura da imagem.
+        dropout (float): dropout utilizado na parte linear.
+        num_classes (int): número de classes para o modelo classificar.
     """
     learning_rate: float
     batch_size: int
     num_epochs: int
     width: int
     height: int
+    dropout: float
+    num_classes: int

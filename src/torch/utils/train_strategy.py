@@ -38,6 +38,8 @@ class TrainingStrategy():
         batch_size = self.hyperparameters.batch_size
         lr = self.hyperparameters.learning_rate
         num_epochs = self.hyperparameters.num_epochs
+        dropout = self.hyperparameters.dropout
+        num_classes = self.hyperparameters.num_classes
 
         # Verificando a utilização do cuda
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -73,7 +75,7 @@ class TrainingStrategy():
         )
         
         # Instânciando modelo, otimizador e função de custo
-        model = CellClassifier()
+        model = CellClassifier(dropout, num_classes)
         model.to(device)
         
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
