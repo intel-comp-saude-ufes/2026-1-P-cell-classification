@@ -11,6 +11,7 @@ import logging
 from torch import nn
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from sklearn.metrics import precision_recall_fscore_support
 
 from src.data.process_data import DataProcessing
 from src.torch.modules.dataset import CellClassificationDataset
@@ -43,6 +44,9 @@ class TrainingStrategy():
         num_classes = self.hyperparameters.num_classes
         patience = self.hyperparameters.patience
         min_delta = self.hyperparameters.min_delta
+
+        # Nomes das classes na ordem dos índices (labels[i] == classe i)
+        class_names = self.data_processor.get_labels()
 
         # Verificando a utilização do cuda
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -117,6 +121,8 @@ class TrainingStrategy():
             model.eval()
             
             val_loss = 0
+            all_preds = []
+            all_labels = []
             with torch.no_grad():
                 loop_interno_val = tqdm(val_loader, leave=False, desc=' Validation Progress: ')
                 for images, labels in loop_interno_val:
@@ -124,23 +130,64 @@ class TrainingStrategy():
                     # Forward pass na rede
                     outputs = model(images)
                     loss = loss_func(outputs, labels)
-                    
+
                     # Obtendo valor da loss de validação
                     val_loss += loss.item()
-                    
-                    # TODO: Adicionar métricas de avaliação (ex: acurácia, f1-score, etc.)
+
+                    # Classe prevista = índice do maior logit; acumula para as métricas
+                    preds = outputs.argmax(dim=1)
+                    all_preds.extend(preds.cpu().tolist())
+                    all_labels.extend(labels.cpu().tolist())
+
                     # TODO: Adicionar matriz de confusão e relatório de classificação
             
             avg_train_loss = train_loss / len(train_loader)
             avg_val_loss = val_loss / len(val_loader)
 
+            # Métricas de validação por classe. average=None retorna um array
+            # com o valor de cada classe; labels=range(num_classes) garante que
+            # todas as 6 classes apareçam sempre, na mesma ordem, mesmo que
+            # alguma não tenha amostras nesta época. zero_division=0 evita
+            # warning quando uma classe não recebe nenhuma predição.
+            precision_pc, recall_pc, f1_pc, support_pc = precision_recall_fscore_support(
+                all_labels, all_preds,
+                labels=range(num_classes),
+                average=None,
+                zero_division=0,
+            )
+
+            # Métricas por classe, indexadas pelo nome da classe
+            per_class = {
+                (class_names[i] if i < len(class_names) else str(i)): {
+                    "precision": float(precision_pc[i]),
+                    "recall": float(recall_pc[i]),
+                    "f1_score": float(f1_pc[i]),
+                    "support": int(support_pc[i]),
+                }
+                for i in range(num_classes)
+            }
+
+            # Métricas agregadas 'macro' = média simples entre as classes,
+            # tratando todas com o mesmo peso (bom quando são desbalanceadas).
+            precision = float(precision_pc.mean())
+            recall = float(recall_pc.mean())
+            f1 = float(f1_pc.mean())
+
             history.append({
                 "epoch": epoch + 1,
                 "train_loss": avg_train_loss,
-                "val_loss": avg_val_loss
+                "val_loss": avg_val_loss,
+                "precision": precision,
+                "recall": recall,
+                "f1_score": f1,
+                "per_class": per_class,
             })
 
-            logger.info(f'[{epoch+1}/{num_epochs}] Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+            logger.info(
+                f'[{epoch+1}/{num_epochs}] Train Loss: {avg_train_loss:.4f}, '
+                f'Val Loss: {avg_val_loss:.4f}, Precision: {precision:.4f}, '
+                f'Recall: {recall:.4f}, F1: {f1:.4f}'
+            )
 
             # Early stopping: guarda os melhores pesos e para se a val_loss
             # não melhorar por `patience` épocas seguidas.
