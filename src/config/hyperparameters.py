@@ -24,6 +24,11 @@ class Hyperparameters:
         patience (int): nº de épocas sem melhora no F1-macro antes de parar (early stopping).
         min_delta (float): melhora mínima no F1-macro para contar como progresso.
         num_workers (int): nº de processos paralelos para carregar os dados (DataLoader).
+        balance_strategy (str): estratégia contra o desbalanceamento de classes.
+            - "none": sem balanceamento (padrão).
+            - "sampler": WeightedRandomSampler com peso 1/frequência.
+            - "sampler_sqrt": WeightedRandomSampler com peso 1/sqrt(frequência).
+            - "weighted_loss": CrossEntropyLoss ponderada pelo inverso da frequência.
     """
     learning_rate: float
     batch_size: int
@@ -35,3 +40,4 @@ class Hyperparameters:
     patience: int = 5
     min_delta: float = 0.0
     num_workers: int = 8
+    balance_strategy: str = "none"

@@ -5,6 +5,7 @@ Descrição:
     a estratégia de treinamento para os modelos do PyTorch.
 """
 import copy
+import math
 import torch
 import logging
 import matplotlib
@@ -12,11 +13,12 @@ import matplotlib
 matplotlib.use('Agg')  # backend sem interface gráfica, para salvar em arquivo
 
 from pathlib import Path
+from collections import Counter
 from torch import nn
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from torchvision import transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from sklearn.metrics import (
     precision_recall_fscore_support,
     confusion_matrix,
@@ -61,6 +63,7 @@ class TrainingStrategy():
         patience = self.hyperparameters.patience
         min_delta = self.hyperparameters.min_delta
         num_workers = self.hyperparameters.num_workers
+        balance_strategy = self.hyperparameters.balance_strategy
 
         # Nomes das classes na ordem dos índices (labels[i] == classe i)
         class_names = self.data_processor.get_labels()
@@ -102,7 +105,51 @@ class TrainingStrategy():
             width=width, height=height,
             transform=val_transform
         )
-        
+
+        # Balanceamento de classes (só no treino). Define ou um sampler
+        # (WeightedRandomSampler) ou um vetor de pesos para a loss — nunca os
+        # dois juntos, para não super-corrigir o desbalanceamento.
+        sampler = None
+        class_weight_tensor = None
+        if balance_strategy != "none":
+            # Rótulos (índice) de cada amostra de treino. train_data é um Subset
+            # de objetos Cell, então lemos os labels sem carregar imagem nenhuma.
+            train_labels = [
+                self.data_processor.label2index(train_data[i].label)
+                for i in range(len(train_data))
+            ]
+            class_counts = Counter(train_labels)
+
+            if balance_strategy in ("sampler", "sampler_sqrt"):
+                # Peso por classe = inverso da frequência (ou da sua raiz, versão
+                # mais suave). O sampler sorteia com reposição segundo esses
+                # pesos, oversampling as raras e undersampling as comuns.
+                if balance_strategy == "sampler_sqrt":
+                    class_weights = {c: 1.0 / math.sqrt(n) for c, n in class_counts.items()}
+                else:
+                    class_weights = {c: 1.0 / n for c, n in class_counts.items()}
+
+                sample_weights = [class_weights[label] for label in train_labels]
+                sampler = WeightedRandomSampler(
+                    weights=sample_weights,
+                    num_samples=len(sample_weights),  # mantém o tamanho da época
+                    replacement=True,                 # essencial para repetir as raras
+                )
+            elif balance_strategy == "weighted_loss":
+                # Pesos estilo 'balanced' do sklearn: total / (num_classes * count).
+                # Classes ausentes no treino recebem peso 0 (não contribuem).
+                total = len(train_labels)
+                weights = [
+                    total / (num_classes * class_counts[c]) if class_counts.get(c, 0) > 0 else 0.0
+                    for c in range(num_classes)
+                ]
+                class_weight_tensor = torch.tensor(weights, dtype=torch.float, device=device)
+            else:
+                raise ValueError(
+                    f"balance_strategy inválido: {balance_strategy!r}. Use "
+                    f"'none', 'sampler', 'sampler_sqrt' ou 'weighted_loss'."
+                )
+
         # Criando dataloaders do PyTorch.
         # num_workers > 0 paraleliza a decodificação das imagens em vários
         # processos, evitando que a GPU fique ociosa esperando os dados.
@@ -115,7 +162,8 @@ class TrainingStrategy():
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=(sampler is None),  # shuffle só quando NÃO há sampler (são exclusivos)
+            sampler=sampler,
             num_workers=num_workers,
             pin_memory=pin_memory,
             persistent_workers=persistent_workers,
@@ -135,7 +183,8 @@ class TrainingStrategy():
         model.to(device)
         
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-        loss_func = nn.CrossEntropyLoss()
+        # weight=None (padrão) quando não é 'weighted_loss'.
+        loss_func = nn.CrossEntropyLoss(weight=class_weight_tensor)
         
         # Estado para early stopping e para guardar o melhor modelo.
         # A seleção é feita pelo F1-macro (maximizar), mais robusto ao

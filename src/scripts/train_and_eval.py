@@ -46,7 +46,8 @@ def main():
         num_epochs=100,
         dropout=0.5,
         num_classes=6,
-        num_workers=8
+        num_workers=8,
+        balance_strategy="sampler_sqrt"
     )
     
     # ----- Treino único (fora do cross-validation)
