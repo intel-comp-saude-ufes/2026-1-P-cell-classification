@@ -4,6 +4,7 @@ Descrição:
     Este arquivo contém a classe com a implementação do modelo de classificação de células.
 """
 from torch import nn
+import torchvision.models as models
 
 class CellClassifier(nn.Module):
     """
@@ -14,7 +15,14 @@ class CellClassifier(nn.Module):
     """
     def __init__(self):
         super().__init__()
+        self.cnn_features = models.efficientnet_b3(weights='DEFAULT')
+        
+        num_features = self.cnn_features.classifier[1].in_features
+        
+        self.cnn_features.classifier = nn.Identity()
+
+        self.fc = nn.Linear(num_features, 6)
     
-    # TODO
     def forward(self, x):
-        pass
+        out = self.cnn_features(x)
+        return self.fc(out)

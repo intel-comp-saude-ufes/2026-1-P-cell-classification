@@ -17,6 +17,7 @@ from src.torch.utils.cross_validate import CrossValidation
 
 # ----- Configs
 METADATA_PATH = Path("data/raw/classifications.csv")
+IMAGE_FOLDER_PATH = Path("data/raw/images")
 
 setup_logging(level="INFO")
 logger = logging.getLogger(__name__)
@@ -29,7 +30,8 @@ def main():
     # Leitura e processamento dos dados
     logger.info(f"Lendo metadados do dataset em: {METADATA_PATH}")
     metadata_df = pd.read_csv(METADATA_PATH)
-    data_processor = DataProcessing(metadata=metadata_df)
+    metadata_df = metadata_df.head(n = 1000)
+    data_processor = DataProcessing(metadata=metadata_df, image_folder_path=IMAGE_FOLDER_PATH)
     
     logger.info(f"Total de amostras no dataset: {len(data_processor)}")
     logger.info(f"Labels: {data_processor.get_labels()}")

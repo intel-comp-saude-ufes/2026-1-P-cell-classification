@@ -8,6 +8,7 @@ import torch
 import logging
 
 from torch import nn
+from tqdm import tqdm
 from torch.utils.data import DataLoader
 
 from src.data.process_data import DataProcessing
@@ -43,12 +44,14 @@ class TrainingStrategy():
         # Criando datasets do PyTorch
         train_dataset = CellClassificationDataset(
             train_data,
+            data_processor=self.data_processor,
             width=width, height=height,
             transform=None
         )
         
         val_dataset = CellClassificationDataset(
             val_data,
+            data_processor=self.data_processor,
             width=width, height=height,
             transform=None
         )
@@ -73,12 +76,13 @@ class TrainingStrategy():
         loss_func = nn.CrossEntropyLoss()
         
         history = []
-        for epoch in range(num_epochs):
+        for epoch in tqdm(range(num_epochs), desc='Train Progress: '):
             # Treinando pesos da rede
             model.train()
             
             train_loss = 0
-            for images, labels in train_loader:
+            loop_interno = tqdm(train_loader, leave=False, desc='Batches Progress: ')
+            for images, labels in loop_interno:
                 # Forward pass na rede
                 outputs = model(images)
                 loss = loss_func(outputs, labels)

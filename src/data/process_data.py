@@ -4,6 +4,8 @@ Descrição:
     Este arquivo contém a classe que irá armazenar o dataset. Ele irá conter toda a
     lógica de processamento para entregar os dados a todas as outras interfaces do projeto.
 """
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -28,9 +30,10 @@ class DataProcessing:
     Args:
         None
     """
-    def __init__(self, metadata: pd.DataFrame, random_state=None):
+    def __init__(self, metadata: pd.DataFrame, image_folder_path: Path, random_state=None):
         self.metadata = metadata
         self.random_state = random_state
+        self.image_folder_path = image_folder_path
         
         self.__process_data()
     
@@ -61,7 +64,7 @@ class DataProcessing:
                 x=row["nucleus_x"],
                 y=row["nucleus_y"],
                 label=row["bethesda_system"],
-                image_path=row["image_filename"]
+                image_path= self.image_folder_path / row["image_filename"]
             ) for _, row in self.metadata.iterrows()
         ]
         

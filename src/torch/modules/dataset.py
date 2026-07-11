@@ -6,8 +6,9 @@ Descrição:
 from PIL import Image
 from typing import Callable
 from torch.utils.data import Dataset
+import torchvision.transforms
 
-from src.data.process_data import Cell
+from src.data.process_data import Cell, DataProcessing
 
 
 class CellClassificationDataset(Dataset):
@@ -17,10 +18,16 @@ class CellClassificationDataset(Dataset):
     Args:
         Dataset (Dataset): Classe base do PyTorch para datasets.
     """
-    def __init__(self, data: list[Cell], width, height, transform: Callable | None = None):
+    def __init__(self, data: list[Cell], data_processor: DataProcessing, width, height, transform: Callable | None = None):
         self.data = data
-        self.transform = transform
+        self.data_processor = data_processor
         
+        if transform is not None:
+            self.transform = transform
+        else:
+            self.transform = torchvision.transforms.ToTensor()
+
+
         # Hiperparâmetros
         self.width = width
         self.height = height
@@ -37,6 +44,6 @@ class CellClassificationDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         
-        label = self.data_processer.label2index(cell_info.label)
+        label = self.data_processor.label2index(cell_info.label)
         
         return image, label
