@@ -39,12 +39,12 @@ def main():
     
     # Inicializando hiperparâmetros
     h_params = Hyperparameters(
-        width=150,
-        height=150,
+        width=100,
+        height=100,
         batch_size=32,
-        learning_rate=0.001,
-        num_epochs=10,
-        dropout=0.3,
+        learning_rate=0.0001,
+        num_epochs=100,
+        dropout=0.5,
         num_classes=6,
         num_workers=8
     )

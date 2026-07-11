@@ -15,6 +15,7 @@ from pathlib import Path
 from torch import nn
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from torchvision import transforms
 from torch.utils.data import DataLoader
 from sklearn.metrics import (
     precision_recall_fscore_support,
@@ -28,6 +29,11 @@ from src.torch.modules.dataset import CellClassificationDataset
 from src.torch.modules.model import CellClassifier
 
 logger = logging.getLogger(__name__)
+
+# Estatísticas do ImageNet, usadas na normalização. O backbone (EfficientNet-B3)
+# é pré-treinado no ImageNet e espera receber entradas nessa distribuição.
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
 class TrainingStrategy():
@@ -62,21 +68,39 @@ class TrainingStrategy():
         # Verificando a utilização do cuda
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # TODO: Adicionar transformações nos dados
-        
+        # Transformações nos dados.
+        # - Normalize (ImageNet): obrigatório, pois o backbone pré-treinado
+        #   espera entradas nessa distribuição.
+        # - Augmentation (flips/rotação/jitter): aplicado SÓ no treino, como
+        #   regularizador contra overfitting.
+        # A validação recebe só ToTensor + Normalize, para ser determinística.
+        train_transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            transforms.RandomRotation(20),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ])
+
+        val_transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ])
+
         # Criando datasets do PyTorch
         train_dataset = CellClassificationDataset(
             train_data,
             data_processor=self.data_processor,
             width=width, height=height,
-            transform=None
+            transform=train_transform
         )
-        
+
         val_dataset = CellClassificationDataset(
             val_data,
             data_processor=self.data_processor,
             width=width, height=height,
-            transform=None
+            transform=val_transform
         )
         
         # Criando dataloaders do PyTorch.
