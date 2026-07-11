@@ -232,12 +232,6 @@ class TrainingStrategy():
                 "f1_score": f1,
                 "per_class": per_class,
             })
-
-            logger.info(
-                f'[{epoch+1}/{num_epochs}] Train Loss: {avg_train_loss:.4f}, '
-                f'Val Loss: {avg_val_loss:.4f}, Precision: {precision:.4f}, '
-                f'Recall: {recall:.4f}, F1: {f1:.4f}'
-            )
             
             # Early stopping: guarda os melhores pesos e para se a val_loss
             # não melhorar por `patience` épocas seguidas.
@@ -258,9 +252,10 @@ class TrainingStrategy():
                     )
                     break
             
-            # Salva a matriz de confusão e o relatório de classificação do melhor
-            # modelo, avaliado no conjunto de validação.
+            
             if output_dir is not None:
+                # Salva a matriz de confusão e o relatório de classificação do melhor
+                # modelo, avaliado no conjunto de validação.
                 self._save_evaluation_artifacts(
                     output_dir=Path(output_dir),
                     labels=best_labels,
@@ -269,12 +264,17 @@ class TrainingStrategy():
                     num_classes=num_classes,
                     best_epoch=best_epoch,
                 )
-            
+                
+                # Salva a curva de aprendizado (loss) e a evolução das métricas macro.
+                self._save_learning_curves(
+                    history=history,
+                    output_dir=Path(output_dir),
+                    best_epoch=best_epoch,
+                )
+                
         # Restaura os pesos da melhor época (não os da última, que podem já
         # estar em overfitting).
         model.load_state_dict(best_model_state)
-
-        # TODO: Adicionar curva de aprendizado
 
         return {
             "best_val_loss": best_val_loss,
@@ -327,4 +327,70 @@ class TrainingStrategy():
         )
         (output_dir / 'report.txt').write_text(report)
 
-        logger.info(f'Matriz de confusão e relatório salvos em: {output_dir}')
+    def _save_learning_curves(self, history, output_dir, best_epoch=None):
+        """
+        Salva, em um único PNG, a curva de aprendizado (train/val loss) e a
+        evolução das métricas macro (precision, recall, f1) ao longo das épocas.
+
+        Args:
+            history (list[dict]): métricas registradas a cada época.
+            output_dir (Path): pasta onde o arquivo será salvo.
+            best_epoch (int | None): época do melhor modelo; se informada, é
+                marcada como referência nos dois gráficos.
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        epochs = [h["epoch"] for h in history]
+
+        # Cores categóricas colorblind-safe (validadas): uma por série.
+        COR_TREINO, COR_VAL, COR_F1 = '#0072B2', '#D55E00', '#009E73'
+
+        fig, (ax_loss, ax_metrics) = plt.subplots(1, 2, figsize=(14, 5))
+
+        # --- Curva de aprendizado (loss) ---
+        ax_loss.plot(
+            epochs, [h["train_loss"] for h in history],
+            color=COR_TREINO, linewidth=2, marker='o', label='Treino'
+        )
+        ax_loss.plot(
+            epochs, [h["val_loss"] for h in history],
+            color=COR_VAL, linewidth=2, marker='o', label='Validação'
+        )
+        ax_loss.set_title('Curva de Aprendizado')
+        ax_loss.set_xlabel('Época')
+        ax_loss.set_ylabel('Loss')
+        ax_loss.grid(True, alpha=0.3)
+
+        # --- Evolução das métricas macro (validação) ---
+        ax_metrics.plot(
+            epochs, [h["precision"] for h in history],
+            color=COR_TREINO, linewidth=2, marker='o', label='Precision'
+        )
+        ax_metrics.plot(
+            epochs, [h["recall"] for h in history],
+            color=COR_VAL, linewidth=2, marker='o', label='Recall'
+        )
+        ax_metrics.plot(
+            epochs, [h["f1_score"] for h in history],
+            color=COR_F1, linewidth=2, marker='o', label='F1-score'
+        )
+        ax_metrics.set_title('Métricas Macro (validação)')
+        ax_metrics.set_xlabel('Época')
+        ax_metrics.set_ylabel('Valor')
+        ax_metrics.set_ylim(0, 1)
+        ax_metrics.grid(True, alpha=0.3)
+
+        # Marca a época do melhor modelo (onde o early stopping selecionou).
+        if best_epoch is not None:
+            for ax in (ax_loss, ax_metrics):
+                ax.axvline(
+                    best_epoch, color='gray', linestyle='--',
+                    linewidth=1, alpha=0.7, label=f'Melhor época ({best_epoch})'
+                )
+
+        ax_loss.legend()
+        ax_metrics.legend()
+
+        fig.tight_layout()
+        fig.savefig(output_dir / 'learning_curves.png', dpi=150)
+        plt.close(fig)
