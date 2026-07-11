@@ -275,6 +275,14 @@ class TrainingStrategy():
         # Restaura os pesos da melhor época (não os da última, que podem já
         # estar em overfitting).
         model.load_state_dict(best_model_state)
+        
+        # Salva a curva de aprendizado (loss) e a evolução das métricas macro
+        # da última época.
+        self._save_learning_curves(
+            history=history,
+            output_dir=Path(output_dir),
+            best_epoch=best_epoch,
+        )
 
         return {
             "best_val_loss": best_val_loss,
