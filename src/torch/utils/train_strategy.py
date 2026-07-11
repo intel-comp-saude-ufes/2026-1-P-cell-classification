@@ -85,7 +85,7 @@ class TrainingStrategy():
             model.train()
             
             train_loss = 0
-            loop_interno = tqdm(train_loader, leave=False, desc=' Batches Progress: ')
+            loop_interno = tqdm(train_loader, leave=False, desc=' Batch Progress: ')
             for images, labels in loop_interno:
                 # Forward pass na rede
                 images, labels = images.to(device), labels.to(device)
@@ -107,7 +107,8 @@ class TrainingStrategy():
             
             val_loss = 0
             with torch.no_grad():
-                for images, labels in val_loader:
+                loop_interno_val = tqdm(val_loader, leave=False, desc=' Validation Progress: ')
+                for images, labels in loop_interno_val:
                     images, labels = images.to(device), labels.to(device)
                     # Forward pass na rede
                     outputs = model(images)
