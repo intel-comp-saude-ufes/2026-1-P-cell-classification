@@ -137,8 +137,11 @@ class TrainingStrategy():
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
         loss_func = nn.CrossEntropyLoss()
         
-        # Estado para early stopping e para guardar o melhor modelo
-        best_val_loss = float('inf')
+        # Estado para early stopping e para guardar o melhor modelo.
+        # A seleção é feita pelo F1-macro (maximizar), mais robusto ao
+        # desbalanceamento das classes do que a val_loss. Guardamos também a
+        # val_loss da melhor época apenas para registro.
+        best_f1 = float('-inf')
         best_epoch = 0
         best_model_state = copy.deepcopy(model.state_dict())
         epochs_no_improve = 0
@@ -233,10 +236,10 @@ class TrainingStrategy():
                 "per_class": per_class,
             })
             
-            # Early stopping: guarda os melhores pesos e para se a val_loss
-            # não melhorar por `patience` épocas seguidas.
-            if avg_val_loss < best_val_loss - min_delta:
-                best_val_loss = avg_val_loss
+            # Early stopping: guarda os melhores pesos quando o F1-macro melhora
+            # e para se ele não melhorar por `patience` épocas seguidas.
+            if f1 > best_f1 + min_delta:
+                best_f1 = f1
                 best_epoch = epoch + 1
                 best_model_state = copy.deepcopy(model.state_dict())
                 best_preds = all_preds
@@ -246,8 +249,8 @@ class TrainingStrategy():
                 epochs_no_improve += 1
                 if epochs_no_improve >= patience:
                     logger.info(
-                        f'Early stopping na época {epoch+1}: sem melhora na '
-                        f'val_loss há {patience} épocas (melhor: {best_val_loss:.4f} '
+                        f'Early stopping na época {epoch+1}: sem melhora no '
+                        f'F1 há {patience} épocas (melhor: {best_f1:.4f} '
                         f'na época {best_epoch}).'
                     )
                     break
@@ -285,7 +288,7 @@ class TrainingStrategy():
         )
 
         return {
-            "best_val_loss": best_val_loss,
+            "best_f1": best_f1,
             "best_epoch": best_epoch,
             "history": history,
             "output_dir": str(output_dir) if output_dir is not None else None,
