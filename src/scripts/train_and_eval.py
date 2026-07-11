@@ -30,7 +30,6 @@ def main():
     # Leitura e processamento dos dados
     logger.info(f"Lendo metadados do dataset em: {METADATA_PATH}")
     metadata_df = pd.read_csv(METADATA_PATH)
-    metadata_df = metadata_df.head(n = 1000)
     data_processor = DataProcessing(metadata=metadata_df, image_folder_path=IMAGE_FOLDER_PATH)
     
     logger.info(f"Total de amostras no dataset: {len(data_processor)}")
