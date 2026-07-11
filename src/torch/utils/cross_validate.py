@@ -6,6 +6,9 @@ Descrição:
     O objetivo é que a classe de tratamento dos dados entregue os dados e essa classe apenas
     utilize eles.
 """
+from pathlib import Path
+from datetime import datetime
+
 from tqdm import tqdm
 
 from src.data.process_data import DataProcessing
@@ -27,6 +30,10 @@ class CrossValidation():
         Args:
             hyperparameters (Hyperparameters): Hiperparâmetros do treinamento.
         """
+        # Identificador único desta execução, usado para nomear a pasta em
+        # outputs/. Cada run do script gera uma pasta nova.
+        train_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+
         with tqdm(total=self.k_folds, desc="Cross Validation") as pbar:
             for fold, (train_data, val_data) in enumerate(
                 self.data_processor.iterfolds(),
@@ -37,11 +44,14 @@ class CrossValidation():
                     data_processor=self.data_processor,
                 )
 
+                output_dir = Path('outputs') / train_id / f'fold_{fold}'
+
                 training_strategy.train(
                     train_data=train_data,
                     val_data=val_data,
+                    output_dir=output_dir,
                 )
-                
+
                 # TODO: Resultados do treino ainda deverão ser tratados aqui
 
                 pbar.update()

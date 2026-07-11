@@ -7,11 +7,21 @@ Descrição:
 import copy
 import torch
 import logging
+import matplotlib
 
+matplotlib.use('Agg')  # backend sem interface gráfica, para salvar em arquivo
+
+from pathlib import Path
 from torch import nn
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import (
+    precision_recall_fscore_support,
+    confusion_matrix,
+    classification_report,
+    ConfusionMatrixDisplay,
+)
 
 from src.data.process_data import DataProcessing
 from src.torch.modules.dataset import CellClassificationDataset
@@ -33,7 +43,7 @@ class TrainingStrategy():
 
     # TODO: Treinamento deve retornar algumas informações para o cross validation
     #       para que elas sejam tratadas lá
-    def train(self, train_data, val_data):
+    def train(self, train_data, val_data, output_dir=None):
         # Extraindo hiperparâmetros
         width = self.hyperparameters.width
         height = self.hyperparameters.height
@@ -44,6 +54,7 @@ class TrainingStrategy():
         num_classes = self.hyperparameters.num_classes
         patience = self.hyperparameters.patience
         min_delta = self.hyperparameters.min_delta
+        num_workers = self.hyperparameters.num_workers
 
         # Nomes das classes na ordem dos índices (labels[i] == classe i)
         class_names = self.data_processor.get_labels()
@@ -68,17 +79,31 @@ class TrainingStrategy():
             transform=None
         )
         
-        # Criando dataloaders do PyTorch
+        # Criando dataloaders do PyTorch.
+        # num_workers > 0 paraleliza a decodificação das imagens em vários
+        # processos, evitando que a GPU fique ociosa esperando os dados.
+        # pin_memory só ajuda quando há GPU (acelera a cópia CPU -> GPU) e
+        # persistent_workers só faz sentido com workers (mantém os processos
+        # vivos entre épocas, evitando recriá-los toda vez).
+        pin_memory = device.type == 'cuda'
+        persistent_workers = num_workers > 0
+
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            shuffle=True
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            persistent_workers=persistent_workers,
         )
-        
+
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
-            shuffle=False
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            persistent_workers=persistent_workers,
         )
         
         # Instânciando modelo, otimizador e função de custo
@@ -93,6 +118,9 @@ class TrainingStrategy():
         best_epoch = 0
         best_model_state = copy.deepcopy(model.state_dict())
         epochs_no_improve = 0
+        # Predições/rótulos da melhor época, para a matriz de confusão e o relatório
+        best_preds = []
+        best_labels = []
 
         history = []
         for epoch in tqdm(range(num_epochs), desc='Train Progress: '):
@@ -195,6 +223,8 @@ class TrainingStrategy():
                 best_val_loss = avg_val_loss
                 best_epoch = epoch + 1
                 best_model_state = copy.deepcopy(model.state_dict())
+                best_preds = all_preds
+                best_labels = all_labels
                 epochs_no_improve = 0
             else:
                 epochs_no_improve += 1
@@ -210,10 +240,69 @@ class TrainingStrategy():
         # estar em overfitting).
         model.load_state_dict(best_model_state)
 
+        # Salva a matriz de confusão e o relatório de classificação do melhor
+        # modelo, avaliado no conjunto de validação.
+        if output_dir is not None:
+            self._save_evaluation_artifacts(
+                output_dir=Path(output_dir),
+                labels=best_labels,
+                preds=best_preds,
+                class_names=class_names,
+                num_classes=num_classes,
+                best_epoch=best_epoch,
+            )
+
         # TODO: Adicionar curva de aprendizado
 
         return {
             "best_val_loss": best_val_loss,
             "best_epoch": best_epoch,
             "history": history,
+            "output_dir": str(output_dir) if output_dir is not None else None,
         }
+
+    def _save_evaluation_artifacts(
+        self, output_dir, labels, preds, class_names, num_classes, best_epoch
+    ):
+        """
+        Salva a matriz de confusão (PNG) e o relatório de classificação (TXT)
+        do melhor modelo no diretório informado.
+
+        Args:
+            output_dir (Path): pasta onde os arquivos serão salvos.
+            labels (list): rótulos verdadeiros da melhor época.
+            preds (list): predições da melhor época.
+            class_names (list): nomes das classes na ordem dos índices.
+            num_classes (int): número total de classes.
+            best_epoch (int): época que gerou esses resultados (para o título).
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Nomes na ordem dos índices, com fallback caso faltem nomes
+        target_names = [
+            class_names[i] if i < len(class_names) else str(i)
+            for i in range(num_classes)
+        ]
+
+        # Matriz de confusão -> PNG
+        cm = confusion_matrix(labels, preds, labels=range(num_classes))
+        disp = ConfusionMatrixDisplay(
+            confusion_matrix=cm, display_labels=target_names
+        )
+        fig, ax = plt.subplots(figsize=(8, 8))
+        disp.plot(ax=ax, cmap='Blues', xticks_rotation=45, colorbar=False)
+        ax.set_title(f'Matriz de Confusão (melhor época: {best_epoch})')
+        fig.tight_layout()
+        fig.savefig(output_dir / 'confusion_matrix.png', dpi=150)
+        plt.close(fig)
+
+        # Relatório de classificação -> TXT
+        report = classification_report(
+            labels, preds,
+            labels=range(num_classes),
+            target_names=target_names,
+            zero_division=0,
+        )
+        (output_dir / 'report.txt').write_text(report)
+
+        logger.info(f'Matriz de confusão e relatório salvos em: {output_dir}')

@@ -9,9 +9,11 @@ import logging
 import pandas as pd
 
 from pathlib import Path
+from datetime import datetime
 from src.config.logging import setup_logging
 from src.data.process_data import DataProcessing
 from src.config.hyperparameters import Hyperparameters
+from src.torch.utils.train_strategy import TrainingStrategy
 from src.torch.utils.cross_validate import CrossValidation
 
 
@@ -30,7 +32,7 @@ def main():
     # Leitura e processamento dos dados
     logger.info(f"Lendo metadados do dataset em: {METADATA_PATH}")
     metadata_df = pd.read_csv(METADATA_PATH)
-    data_processor = DataProcessing(metadata=metadata_df, image_folder_path=IMAGE_FOLDER_PATH)
+    data_processor = DataProcessing(metadata=metadata_df, image_folder_path=IMAGE_FOLDER_PATH, random_state=5)
     
     logger.info(f"Total de amostras no dataset: {len(data_processor)}")
     logger.info(f"Labels: {data_processor.get_labels()}")
@@ -43,12 +45,35 @@ def main():
         learning_rate=0.001,
         num_epochs=10,
         dropout=0.3,
-        num_classes=6
+        num_classes=6,
+        num_workers=8
     )
     
-    # Inicialização do Cross Validation
-    cross_val = CrossValidation(data_processor=data_processor, k_folds=5)
-    cross_val.cross_validate(hyperparameters=h_params)
+    # ----- Treino único (fora do cross-validation)
+    # iterfolds() é um gerador de splits (treino, validação); next() pega o
+    # primeiro, dando um único split (~64% treino / ~16% validação, com o
+    # restante reservado para teste). Assim treinamos uma vez, em vez das 5
+    # execuções do cross_validate.
+    train_data, val_data = next(data_processor.iterfolds())
+
+    train_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = Path("outputs") / train_id
+
+    training_strategy = TrainingStrategy(h_params, data_processor)
+    result = training_strategy.train(
+        train_data=train_data,
+        val_data=val_data,
+        output_dir=output_dir,
+    )
+    logger.info(
+        f"Melhor modelo: val_loss={result['best_val_loss']:.4f} "
+        f"na época {result['best_epoch']}. Artefatos salvos em {output_dir}"
+    )
+    # -----
+
+    # # Inicialização do Cross Validation
+    # cross_val = CrossValidation(data_processor=data_processor, k_folds=5)
+    # cross_val.cross_validate(hyperparameters=h_params)
     
     # TODO: Pegar o melhor modelo obtido na validação cruzada e testar ele
     # TODO: A ideia é que o conjunto de teste seja seja salvo em `data_processor`

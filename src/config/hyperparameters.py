@@ -23,6 +23,7 @@ class Hyperparameters:
         num_classes (int): número de classes para o modelo classificar.
         patience (int): nº de épocas sem melhora na val_loss antes de parar (early stopping).
         min_delta (float): melhora mínima na val_loss para contar como progresso.
+        num_workers (int): nº de processos paralelos para carregar os dados (DataLoader).
     """
     learning_rate: float
     batch_size: int
@@ -33,3 +34,4 @@ class Hyperparameters:
     num_classes: int
     patience: int = 5
     min_delta: float = 0.0
+    num_workers: int = 8
