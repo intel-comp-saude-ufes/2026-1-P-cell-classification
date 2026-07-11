@@ -38,8 +38,14 @@ class CellClassificationDataset(Dataset):
     def __getitem__(self, idx):
         cell_info = self.data[idx]
         
+        horizontal = self.width // 2
+        vertical = self.height // 2
+        
         image = Image.open(cell_info.image_path).convert("RGB")
-        image = image.crop((cell_info.x, cell_info.y, cell_info.x + self.width, cell_info.y + self.height))
+        image = image.crop((cell_info.x - horizontal, 
+                            cell_info.y - vertical, 
+                            cell_info.x + horizontal, 
+                            cell_info.y + vertical))
         
         if self.transform:
             image = self.transform(image)
