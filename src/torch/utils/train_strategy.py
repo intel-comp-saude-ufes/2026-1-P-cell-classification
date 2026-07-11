@@ -4,6 +4,7 @@ Descrição:
     Este arquivo contém a classe que irá definir 
     a estratégia de treinamento para os modelos do PyTorch.
 """
+import copy
 import torch
 import logging
 
@@ -40,6 +41,8 @@ class TrainingStrategy():
         num_epochs = self.hyperparameters.num_epochs
         dropout = self.hyperparameters.dropout
         num_classes = self.hyperparameters.num_classes
+        patience = self.hyperparameters.patience
+        min_delta = self.hyperparameters.min_delta
 
         # Verificando a utilização do cuda
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -81,6 +84,12 @@ class TrainingStrategy():
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
         loss_func = nn.CrossEntropyLoss()
         
+        # Estado para early stopping e para guardar o melhor modelo
+        best_val_loss = float('inf')
+        best_epoch = 0
+        best_model_state = copy.deepcopy(model.state_dict())
+        epochs_no_improve = 0
+
         history = []
         for epoch in tqdm(range(num_epochs), desc='Train Progress: '):
             # Treinando pesos da rede
@@ -122,14 +131,42 @@ class TrainingStrategy():
                     # TODO: Adicionar métricas de avaliação (ex: acurácia, f1-score, etc.)
                     # TODO: Adicionar matriz de confusão e relatório de classificação
             
+            avg_train_loss = train_loss / len(train_loader)
+            avg_val_loss = val_loss / len(val_loader)
+
             history.append({
                 "epoch": epoch + 1,
-                "train_loss": train_loss / len(train_loader),
-                "val_loss": val_loss / len(val_loader)
+                "train_loss": avg_train_loss,
+                "val_loss": avg_val_loss
             })
-            
-            logger.info(f'[{epoch+1}/{num_epochs}] Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
-            
-            # TODO: Adicionar early stopping e salvar o melhor modelo
-        
+
+            logger.info(f'[{epoch+1}/{num_epochs}] Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+
+            # Early stopping: guarda os melhores pesos e para se a val_loss
+            # não melhorar por `patience` épocas seguidas.
+            if avg_val_loss < best_val_loss - min_delta:
+                best_val_loss = avg_val_loss
+                best_epoch = epoch + 1
+                best_model_state = copy.deepcopy(model.state_dict())
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
+                if epochs_no_improve >= patience:
+                    logger.info(
+                        f'Early stopping na época {epoch+1}: sem melhora na '
+                        f'val_loss há {patience} épocas (melhor: {best_val_loss:.4f} '
+                        f'na época {best_epoch}).'
+                    )
+                    break
+
+        # Restaura os pesos da melhor época (não os da última, que podem já
+        # estar em overfitting).
+        model.load_state_dict(best_model_state)
+
         # TODO: Adicionar curva de aprendizado
+
+        return {
+            "best_val_loss": best_val_loss,
+            "best_epoch": best_epoch,
+            "history": history,
+        }

@@ -21,6 +21,8 @@ class Hyperparameters:
         height (int): Altura da imagem.
         dropout (float): dropout utilizado na parte linear.
         num_classes (int): número de classes para o modelo classificar.
+        patience (int): nº de épocas sem melhora na val_loss antes de parar (early stopping).
+        min_delta (float): melhora mínima na val_loss para contar como progresso.
     """
     learning_rate: float
     batch_size: int
@@ -29,3 +31,5 @@ class Hyperparameters:
     height: int
     dropout: float
     num_classes: int
+    patience: int = 5
+    min_delta: float = 0.0
