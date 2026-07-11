@@ -191,8 +191,6 @@ class TrainingStrategy():
                     all_preds.extend(preds.cpu().tolist())
                     all_labels.extend(labels.cpu().tolist())
 
-                    # TODO: Adicionar matriz de confusão e relatório de classificação
-            
             avg_train_loss = train_loss / len(train_loader)
             avg_val_loss = val_loss / len(val_loader)
 
@@ -240,6 +238,18 @@ class TrainingStrategy():
                 f'Val Loss: {avg_val_loss:.4f}, Precision: {precision:.4f}, '
                 f'Recall: {recall:.4f}, F1: {f1:.4f}'
             )
+            
+            # Salva a matriz de confusão e o relatório de classificação do melhor
+            # modelo, avaliado no conjunto de validação.
+            if output_dir is not None:
+                self._save_evaluation_artifacts(
+                    output_dir=Path(output_dir),
+                    labels=best_labels,
+                    preds=best_preds,
+                    class_names=class_names,
+                    num_classes=num_classes,
+                    best_epoch=best_epoch,
+                )
 
             # Early stopping: guarda os melhores pesos e para se a val_loss
             # não melhorar por `patience` épocas seguidas.
@@ -259,22 +269,10 @@ class TrainingStrategy():
                         f'na época {best_epoch}).'
                     )
                     break
-
+            
         # Restaura os pesos da melhor época (não os da última, que podem já
         # estar em overfitting).
         model.load_state_dict(best_model_state)
-
-        # Salva a matriz de confusão e o relatório de classificação do melhor
-        # modelo, avaliado no conjunto de validação.
-        if output_dir is not None:
-            self._save_evaluation_artifacts(
-                output_dir=Path(output_dir),
-                labels=best_labels,
-                preds=best_preds,
-                class_names=class_names,
-                num_classes=num_classes,
-                best_epoch=best_epoch,
-            )
 
         # TODO: Adicionar curva de aprendizado
 
