@@ -67,7 +67,6 @@ def main():
     )
     logger.info(
         f"Melhor modelo: F1={result['best_f1']:.4f} "
-        f"(val_loss={result['best_val_loss']:.4f}) "
         f"na época {result['best_epoch']}. Artefatos salvos em {output_dir}"
     )
     # -----
