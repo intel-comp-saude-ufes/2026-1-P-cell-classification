@@ -239,18 +239,6 @@ class TrainingStrategy():
                 f'Recall: {recall:.4f}, F1: {f1:.4f}'
             )
             
-            # Salva a matriz de confusão e o relatório de classificação do melhor
-            # modelo, avaliado no conjunto de validação.
-            if output_dir is not None:
-                self._save_evaluation_artifacts(
-                    output_dir=Path(output_dir),
-                    labels=best_labels,
-                    preds=best_preds,
-                    class_names=class_names,
-                    num_classes=num_classes,
-                    best_epoch=best_epoch,
-                )
-
             # Early stopping: guarda os melhores pesos e para se a val_loss
             # não melhorar por `patience` épocas seguidas.
             if avg_val_loss < best_val_loss - min_delta:
@@ -269,6 +257,18 @@ class TrainingStrategy():
                         f'na época {best_epoch}).'
                     )
                     break
+            
+            # Salva a matriz de confusão e o relatório de classificação do melhor
+            # modelo, avaliado no conjunto de validação.
+            if output_dir is not None:
+                self._save_evaluation_artifacts(
+                    output_dir=Path(output_dir),
+                    labels=best_labels,
+                    preds=best_preds,
+                    class_names=class_names,
+                    num_classes=num_classes,
+                    best_epoch=best_epoch,
+                )
             
         # Restaura os pesos da melhor época (não os da última, que podem já
         # estar em overfitting).
