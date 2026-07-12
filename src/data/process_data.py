@@ -70,12 +70,20 @@ class DataProcessing:
     Args:
         None
     """
-    def __init__(self, metadata: pd.DataFrame, image_folder_path: Path, random_state=None):
+    def __init__(self, metadata: pd.DataFrame, image_folder_path: Path,
+                 random_state=None, test_size=0.2):
         self.metadata = metadata
         self.random_state = random_state
         self.image_folder_path = image_folder_path
-        
+
         self.__process_data()
+
+        # O conjunto de teste é decidido AQUI, uma única vez. Antes ele nascia
+        # dentro do iterfolds(), o que fazia get_test_data() quebrar se ninguém
+        # tivesse iterado os folds primeiro — e refazia o split do teste a cada
+        # nova iteração. Ele não é efeito colateral de iterar folds: é uma
+        # propriedade da partição dos dados.
+        self.__split_test_data(test_size=test_size)
     
     def __len__(self):
         return len(self.metadata)
@@ -173,21 +181,24 @@ class DataProcessing:
         self._train_val_indices = train_val_idx
         self._test_indices = test_idx
     
-    def iterfolds(self, train_size=0.7, val_size=0.1, test_size=0.2, k_folds=5):
-        """_summary_
+    def iterfolds(self, k_folds=5):
+        """
+        Gera os k splits (treino, validação) sobre os dados que NÃO são de teste.
+
+        O conjunto de teste já foi separado no __init__ e não é tocado aqui.
+
+        A estratificação é sempre por `bethesda_system` (as 6 classes originais),
+        independente do espaço de rótulos da tarefa. É por isso que os modelos de
+        6, 3 e 2 classes veem exatamente as mesmas lâminas em cada fold, e seus
+        resultados são comparáveis entre si.
 
         Args:
-            train_size (float, optional): _description_. Defaults to 0.7.
-            val_size (float, optional): _description_. Defaults to 0.1.
-            test_size (float, optional): _description_. Defaults to 0.2.
-            k_folds (int, optional): _description_. Defaults to 5.
+            k_folds (int): número de folds. A fração de validação é 1/k_folds dos
+                dados de treino+validação — não há parâmetro separado para ela.
 
         Yields:
-            train: Conjunto de treino
-            val: Conjunto de validação
+            tuple[Subset, Subset]: conjunto de treino e conjunto de validação.
         """
-        self.__split_test_data(test_size=test_size)
-        
         train_val_metadata = self.metadata.iloc[self._train_val_indices]
         
         y = train_val_metadata["bethesda_system"]
@@ -216,6 +227,10 @@ class DataProcessing:
     
     def get_test_data(self) -> Subset:
         """
-        Utilizar somente após finalizar a validação cruzada.
+        O conjunto de teste, separado no __init__ e agrupado por lâmina.
+
+        Só deve ser MEDIDO uma vez, no fim, com a configuração já decidida. Se for
+        consultado a cada ajuste de hiperparâmetro, deixa de ser teste e vira um
+        segundo conjunto de validação — e a estimativa final fica otimista.
         """
         return Subset(self, self._test_indices.tolist())
