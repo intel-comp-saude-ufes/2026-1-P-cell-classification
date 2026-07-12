@@ -39,14 +39,18 @@ def main():
     
     # Inicializando hiperparâmetros
     h_params = Hyperparameters(
-        width=100,
-        height=100,
+        width=90,
+        height=90,
         batch_size=32,
-        learning_rate=0.0001,
+        learning_rate=0.001,      # cabeça (fc): pesos aleatórios, aprende do zero
+        backbone_lr=0.0001,       # backbone: pré-treinada, só ajuste fino
+        trainable_blocks=None,       # só os 2 blocos finais adaptam (3,88M de 10,70M)
+        freeze_epochs=2,          # 2 épocas treinando só a cabeça, antes de descongelar
         num_epochs=100,
+        patience=10,
         dropout=0.5,
         num_classes=6,
-        num_workers=8,
+        num_workers=10,
         balance_strategy="sampler_sqrt"
     )
     

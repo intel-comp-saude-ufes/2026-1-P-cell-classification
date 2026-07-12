@@ -72,6 +72,12 @@ class TrainingStrategy():
         min_delta = self.hyperparameters.min_delta
         num_workers = self.hyperparameters.num_workers
         balance_strategy = self.hyperparameters.balance_strategy
+        trainable_blocks = self.hyperparameters.trainable_blocks
+        freeze_epochs = self.hyperparameters.freeze_epochs
+        # Sem backbone_lr explícito, a backbone treina no mesmo LR da cabeça.
+        backbone_lr = self.hyperparameters.backbone_lr
+        if backbone_lr is None:
+            backbone_lr = lr
 
         # Nomes das classes na ordem dos índices (labels[i] == classe i)
         class_names = self.data_processor.get_labels()
@@ -195,8 +201,20 @@ class TrainingStrategy():
         # Instânciando modelo, otimizador e função de custo
         model = CellClassifier(dropout, num_classes)
         model.to(device)
-        
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+
+        # Havendo warm-up, a fase 1 congela a backbone INTEIRA e treina só a
+        # cabeça. Caso contrário, já entra na configuração definitiva.
+        model.set_backbone_trainable(0 if freeze_epochs > 0 else trainable_blocks)
+
+        # Dois grupos de parâmetros: a backbone (pré-treinada, só precisa de
+        # ajuste fino) anda num LR menor que a cabeça (pesos aleatórios, precisa
+        # aprender do zero). Os parâmetros congelados entram no otimizador desde
+        # já — sem gradiente, o AdamW simplesmente os ignora, e ao descongelar
+        # não é preciso reconstruí-lo.
+        optimizer = torch.optim.AdamW([
+            {"params": model.cnn_features.parameters(), "lr": backbone_lr},
+            {"params": model.fc.parameters(), "lr": lr},
+        ])
         # weight=None (padrão) quando não é 'weighted_loss'.
         loss_func = nn.CrossEntropyLoss(weight=class_weight_tensor)
 
@@ -223,11 +241,33 @@ class TrainingStrategy():
         best_preds = []
         best_labels = []
 
+        def count_trainable():
+            return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+        logger.info(
+            f'Parâmetros treináveis no início: {count_trainable()/1e6:.2f}M '
+            f'(freeze_epochs={freeze_epochs}, trainable_blocks={trainable_blocks}).'
+        )
+
         history = []
         for epoch in tqdm(range(num_epochs), desc='Train Progress: '):
-            # Treinando pesos da rede
+            # Fim do warm-up: aplica a configuração definitiva da backbone. A
+            # paciência do early stopping é zerada porque isto é, na prática, uma
+            # nova fase de treino — o F1 costuma oscilar logo após o descongelamento,
+            # e não queremos que essa oscilação consuma o orçamento da fase anterior.
+            if freeze_epochs > 0 and epoch == freeze_epochs:
+                model.set_backbone_trainable(trainable_blocks)
+                epochs_no_improve = 0
+                logger.info(
+                    f'Época {epoch+1}: backbone descongelada '
+                    f'({count_trainable()/1e6:.2f}M params treináveis, lr={backbone_lr}).'
+                )
+
+            # Treinando pesos da rede. O train() sobrescrito em CellClassifier
+            # devolve os blocos congelados para eval(), preservando as
+            # estatísticas do BatchNorm.
             model.train()
-            
+
             train_loss = 0
             loop_interno = tqdm(train_loader, leave=False, desc=' Batch Progress: ')
             for images, labels in loop_interno:

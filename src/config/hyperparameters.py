@@ -12,7 +12,23 @@ class Hyperparameters:
     Classe para armazenar os hiperparâmetros do modelo.
 
     Args:
-        learning_rate (float): Taxa de aprendizado.
+        learning_rate (float): Taxa de aprendizado da cabeça de classificação (fc).
+        backbone_lr (float | None): Taxa de aprendizado da backbone. Se None, usa
+            a mesma de `learning_rate`. A backbone já vem pré-treinada e só precisa
+            de ajuste fino, então costuma pedir um LR uma ou duas ordens de grandeza
+            menor que o da cabeça, que parte de pesos aleatórios.
+        trainable_blocks (int | None): nº de blocos FINAIS da backbone que ficam
+            treináveis. Controla a CAPACIDADE do modelo, e portanto o overfitting.
+            - None: backbone inteira treinável (10,70 M de params).
+            - 3: 8,51 M (80%)   - 2: 3,88 M (36%)   - 1: 0,59 M (6%)
+            - 0: backbone toda congelada — linear probe, só a fc treina.
+        freeze_epochs (int): nº de épocas iniciais com a backbone INTEIRA congelada,
+            treinando só a cabeça. Resolve um problema diferente de `trainable_blocks`:
+            não é sobre capacidade, é sobre a ORDEM do treino. A fc começa com pesos
+            aleatórios e, nas primeiras iterações, produz gradientes que são ruído;
+            propagá-los distorce as features pré-treinadas antes que elas rendessem
+            algo. Esta fase deixa a cabeça alcançar a backbone antes de mexer nela.
+            Terminada, aplica-se `trainable_blocks`. 0 desliga o warm-up.
         batch_size (int): Tamanho do lote.
         num_epochs (int): Número de épocas.
         optimizer (str): Otimizador a ser usado.
@@ -41,3 +57,6 @@ class Hyperparameters:
     min_delta: float = 0.0
     num_workers: int = 8
     balance_strategy: str = "none"
+    backbone_lr: float | None = None
+    trainable_blocks: int | None = None
+    freeze_epochs: int = 0
