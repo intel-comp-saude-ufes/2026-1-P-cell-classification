@@ -1,0 +1,12 @@
+                                     precision    recall  f1-score   support
+
+                                SCC       0.40      1.00      0.57         2
+Negative for intraepithelial lesion       0.89      0.90      0.89       939
+                               LSIL       0.78      0.59      0.67       379
+                               HSIL       0.86      0.94      0.90       245
+                              ASC-H       0.49      0.71      0.58        58
+                             ASC-US       0.28      0.36      0.31       106
+
+                           accuracy                           0.80      1729
+                          macro avg       0.62      0.75      0.65      1729
+                       weighted avg       0.81      0.80      0.80      1729

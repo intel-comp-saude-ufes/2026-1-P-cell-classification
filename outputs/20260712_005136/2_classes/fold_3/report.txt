@@ -1,0 +1,8 @@
+              precision    recall  f1-score   support
+
+    Negative       0.92      0.94      0.93      1016
+      Lesion       0.93      0.91      0.92       893
+
+    accuracy                           0.93      1909
+   macro avg       0.93      0.93      0.93      1909
+weighted avg       0.93      0.93      0.93      1909

@@ -1,0 +1,29 @@
+Conjunto de TESTE — 2391 células, 3 classes
+
+F1-macro de cada modelo (um por fold da validação cruzada):
+  modelo 1: 0.8187
+  modelo 2: 0.8126
+  modelo 3: 0.8302
+  modelo 4: 0.8284
+  modelo 5: 0.8416
+
+  média ± desvio : 0.8263 ± 0.0112
+
+Ensemble dos modelos (média das probabilidades):
+  F1-macro  : 0.8572
+  Precision : 0.8574
+  Recall    : 0.8570
+  Accuracy  : 0.9030
+
+Relatório por classe (ensemble):
+
+              precision    recall  f1-score   support
+
+    Negative       0.94      0.95      0.94      1530
+   Low grade       0.73      0.73      0.73       347
+  High grade       0.90      0.89      0.90       514
+
+    accuracy                           0.90      2391
+   macro avg       0.86      0.86      0.86      2391
+weighted avg       0.90      0.90      0.90      2391
+

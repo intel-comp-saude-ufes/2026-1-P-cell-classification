@@ -1,0 +1,32 @@
+Conjunto de TESTE — 2391 células, 6 classes
+
+F1-macro de cada modelo (um por fold da validação cruzada):
+  modelo 1: 0.6015
+  modelo 2: 0.6036
+  modelo 3: 0.6062
+  modelo 4: 0.6061
+  modelo 5: 0.5700
+
+  média ± desvio : 0.5975 ± 0.0155
+
+Ensemble dos modelos (média das probabilidades):
+  F1-macro  : 0.6316
+  Precision : 0.6447
+  Recall    : 0.6279
+  Accuracy  : 0.8289
+
+Relatório por classe (ensemble):
+
+                                     precision    recall  f1-score   support
+
+                                SCC       0.57      0.57      0.57        49
+Negative for intraepithelial lesion       0.94      0.94      0.94      1530
+                               LSIL       0.55      0.67      0.60       227
+                               HSIL       0.75      0.78      0.77       339
+                              ASC-H       0.58      0.48      0.53       126
+                             ASC-US       0.48      0.32      0.38       120
+
+                           accuracy                           0.83      2391
+                          macro avg       0.64      0.63      0.63      2391
+                       weighted avg       0.83      0.83      0.83      2391
+

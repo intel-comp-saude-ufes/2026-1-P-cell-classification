@@ -1,0 +1,22 @@
+Validação cruzada — 5 folds
+Tarefa: 3 classes ['Negative', 'Low grade', 'High grade']
+
+Por fold:
+  fold   época   F1-macro  
+  1      14      0.8366    
+  2      6       0.8470    
+  3      33      0.8398    
+  4      21      0.8447    
+  5      22      0.8417    
+
+Agregado (média ± desvio entre folds):
+  F1-macro        : 0.8420 ± 0.0041
+  Precision-macro : 0.8469 ± 0.0153
+  Recall-macro    : 0.8423 ± 0.0056
+
+F1 por classe (média ± desvio). Um desvio grande numa classe de suporte
+pequeno significa que o F1-macro daquele fold foi decidido no cara-ou-coroa:
+  classe                                 F1       ±        suporte 
+  Negative                               0.9192   0.0133   1050    
+  Low grade                              0.7202   0.0383   324     
+  High grade                             0.8865   0.0287   455     

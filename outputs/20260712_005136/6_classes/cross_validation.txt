@@ -1,0 +1,25 @@
+Validação cruzada — 5 folds
+Tarefa: 6 classes ['SCC', 'Negative for intraepithelial lesion', 'LSIL', 'HSIL', 'ASC-H', 'ASC-US']
+
+Por fold:
+  fold   época   F1-macro  
+  1      9       0.6029    
+  2      18      0.6133    
+  3      13      0.5878    
+  4      17      0.6542    
+  5      13      0.5832    
+
+Agregado (média ± desvio entre folds):
+  F1-macro        : 0.6083 ± 0.0284
+  Precision-macro : 0.6173 ± 0.0273
+  Recall-macro    : 0.6415 ± 0.0666
+
+F1 por classe (média ± desvio). Um desvio grande numa classe de suporte
+pequeno significa que o F1-macro daquele fold foi decidido no cara-ou-coroa:
+  classe                                 F1       ±        suporte 
+  SCC                                    0.5555   0.1356   22      
+  Negative for intraepithelial lesion    0.9161   0.0126   1050    
+  LSIL                                   0.5741   0.0630   227     
+  HSIL                                   0.7193   0.1484   273     
+  ASC-H                                  0.5304   0.0411   160     
+  ASC-US                                 0.3543   0.0619   97      

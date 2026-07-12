@@ -1,0 +1,21 @@
+Validação cruzada — 5 folds
+Tarefa: 2 classes ['Negative', 'Lesion']
+
+Por fold:
+  fold   época   F1-macro  
+  1      11      0.8988    
+  2      16      0.9255    
+  3      25      0.9284    
+  4      30      0.8884    
+  5      24      0.8997    
+
+Agregado (média ± desvio entre folds):
+  F1-macro        : 0.9082 ± 0.0177
+  Precision-macro : 0.9085 ± 0.0187
+  Recall-macro    : 0.9084 ± 0.0174
+
+F1 por classe (média ± desvio). Um desvio grande numa classe de suporte
+pequeno significa que o F1-macro daquele fold foi decidido no cara-ou-coroa:
+  classe                                 F1       ±        suporte 
+  Negative                               0.9232   0.0136   1050    
+  Lesion                                 0.8931   0.0261   779     
