@@ -13,7 +13,7 @@ from datetime import datetime
 from src.config.logging import setup_logging
 from src.data.process_data import DataProcessing
 from src.config.hyperparameters import Hyperparameters
-from src.torch.utils.train_strategy import TrainingStrategy
+from src.torch.utils.evaluate import Evaluator
 from src.torch.utils.cross_validate import CrossValidation
 
 
@@ -62,50 +62,72 @@ def main():
         weight_decay=0.05,        # acima do default do AdamW (0.01)
     )
 
-    # ----- Treino único (fora do cross-validation)
-    # iterfolds() é um gerador de splits (treino, validação); next() pega o
-    # primeiro, dando um único split (~64% treino / ~16% validação, com o
-    # restante reservado para teste). Assim treinamos uma vez, em vez das 5
-    # execuções do cross_validate.
-    #
-    # O split é calculado UMA vez e reaproveitado pelas três tarefas. Como
-    # iterfolds() estratifica sempre por `bethesda_system`, ele não depende do
-    # espaço de rótulos — então os três modelos veem exatamente as mesmas lâminas
-    # em treino e em validação, e os três resultados são comparáveis entre si.
-    train_data, val_data = next(data_processor.iterfolds())
-
     train_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # As três granularidades da mesma tarefa. Não são estágios encadeados: cada
     # modelo é independente, treinado sobre TODAS as células, mudando só o alvo.
+    #
+    # Os splits são idênticos entre elas: iterfolds() estratifica sempre por
+    # `bethesda_system`, independente do espaço de rótulos, então os três modelos
+    # veem exatamente as mesmas lâminas em cada fold — e os três resultados são
+    # comparáveis no mesmo conjunto de teste.
     tarefas = {
         "6_classes": data_processor.flat_label_space(),
         "3_classes": data_processor.grade_label_space(),
         "2_classes": data_processor.binary_label_space(),
     }
 
+    # O conjunto de teste é o mesmo para as três tarefas — separado por iterfolds()
+    # antes de qualquer fold, e nunca visto durante o treino nem a seleção.
+    test_data = data_processor.get_test_data()
+    logger.info(f"Conjunto de teste (intocado): {len(test_data)} células")
+
     resultados = {}
     for nome, label_space in tarefas.items():
-        logger.info(f"--- Treinando tarefa '{nome}': {label_space.names}")
+        logger.info(f"===== Tarefa '{nome}': {label_space.names}")
 
         output_dir = Path("outputs") / train_id / nome
 
-        training_strategy = TrainingStrategy(h_params, data_processor, label_space)
-        result = training_strategy.train(
-            train_data=train_data,
-            val_data=val_data,
+        # 1) Validação cruzada: estima o desempenho COM BARRA DE ERRO. Um treino
+        #    único daria um número sem desvio, e não dá para saber se a diferença
+        #    entre duas configurações é real ou é ruído — sobretudo aqui, onde o
+        #    F1-macro pesa igual uma classe de ~28 amostras e uma de ~1143.
+        cross_val = CrossValidation(
+            data_processor=data_processor,
+            k_folds=5,
+            label_space=label_space,
+        )
+        cv = cross_val.cross_validate(
+            hyperparameters=h_params,
+            seed=42,
             output_dir=output_dir,
         )
-        resultados[nome] = result
-    # -----
 
-    # # Inicialização do Cross Validation
-    # cross_val = CrossValidation(data_processor=data_processor, k_folds=5)
-    # cross_val.cross_validate(hyperparameters=h_params)
-    
-    # TODO: Pegar o melhor modelo obtido na validação cruzada e testar ele
-    # TODO: A ideia é que o conjunto de teste seja seja salvo em `data_processor`
-    #       para que ele seja usado aqui.
+        # 2) Teste final. Medido UMA vez, no fim, com a configuração já decidida —
+        #    se o teste for consultado a cada ajuste, vira um segundo conjunto de
+        #    validação e a estimativa final fica otimista.
+        logger.info(f"--- Avaliando '{nome}' no conjunto de teste")
+        evaluator = Evaluator(data_processor=data_processor, label_space=label_space)
+        teste = evaluator.evaluate(
+            checkpoints=cv["checkpoints"],
+            data=test_data,
+            hyperparameters=h_params,
+            output_dir=output_dir,
+        )
+
+        resultados[nome] = {"cv": cv, "test": teste}
+
+    logger.info("===== Resumo final (F1-macro) =====")
+    for nome, r in resultados.items():
+        logger.info(
+            f"  {nome:<10} "
+            f"validação cruzada: {r['cv']['aggregate']['f1_macro']['mean']:.4f} "
+            f"± {r['cv']['aggregate']['f1_macro']['std']:.4f}  |  "
+            f"teste: {r['test']['aggregate']['mean']:.4f} "
+            f"± {r['test']['aggregate']['std']:.4f}  |  "
+            f"teste (ensemble): {r['test']['ensemble']['f1_macro']:.4f}"
+        )
+
 
 if __name__ == "__main__":
     main()

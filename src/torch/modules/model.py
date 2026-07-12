@@ -3,8 +3,33 @@ Arquivo: src/torch/modules/model.py
 Descrição:
     Este arquivo contém a classe com a implementação do modelo de classificação de células.
 """
+import torch
 from torch import nn
 import torchvision.models as models
+
+
+def load_from_checkpoint(path, map_location='cpu'):
+    """
+    Reconstrói um CellClassifier a partir de um checkpoint salvo pelo TrainingStrategy.
+
+    O checkpoint é autossuficiente: além dos pesos, guarda o `label_space` e os
+    parâmetros da arquitetura. Sem eles, um state_dict solto não diria quantas
+    saídas o modelo tem nem o que significa o índice 2 de uma predição.
+
+    Args:
+        path (Path | str): caminho do best_model.pt.
+        map_location (str): dispositivo para onde carregar os tensores.
+
+    Returns:
+        tuple[CellClassifier, LabelSpace]: o modelo em modo eval() e a tarefa dele.
+    """
+    checkpoint = torch.load(path, map_location=map_location, weights_only=False)
+
+    model = CellClassifier(checkpoint['dropout'], checkpoint['num_classes'])
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.eval()
+
+    return model, checkpoint['label_space']
 
 class CellClassifier(nn.Module):
     """

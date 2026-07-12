@@ -6,9 +6,11 @@ Descrição:
 """
 import copy
 import math
+import random
 import torch
 import logging
 import matplotlib
+import numpy as np
 
 matplotlib.use('Agg')  # backend sem interface gráfica, para salvar em arquivo
 
@@ -46,6 +48,40 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 INPUT_SIZE = 300
 
 
+def build_eval_transform():
+    """
+    Pré-processamento determinístico, sem augmentation: só Resize + Normalize.
+
+    É função de módulo, e não código solto dentro do train(), porque a VALIDAÇÃO e
+    o TESTE precisam receber exatamente o mesmo tratamento. Duplicar essa lista em
+    dois lugares é o jeito clássico de introduzir um desvio silencioso entre o que
+    o modelo viu ao ser selecionado e o que ele vê ao ser medido.
+    """
+    return transforms.Compose([
+        transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ])
+
+
+def set_seed(seed: int):
+    """
+    Semeia todos os geradores que afetam um treino.
+
+    O `random_state` do DataProcessing semeia apenas o SPLIT (o StratifiedGroupKFold
+    do sklearn). Tudo o mais é estocástico e vinha do gerador global do PyTorch, sem
+    semente: a inicialização da cabeça, as máscaras de dropout, a augmentation, a
+    ordem do DataLoader e o WeightedRandomSampler (que sorteia com reposição).
+
+    Sem isto, dois treinos com a mesma configuração dão resultados diferentes, e
+    comparar duas configurações vira leitura de folha de chá.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 class TrainingStrategy():
     """
     Estratégia de treinamento para modelos do PyTorch.
@@ -62,7 +98,12 @@ class TrainingStrategy():
 
     # TODO: Treinamento deve retornar algumas informações para o cross validation
     #       para que elas sejam tratadas lá
-    def train(self, train_data, val_data, output_dir=None):
+    def train(self, train_data, val_data, output_dir=None, seed=None):
+        # Semeia antes de qualquer coisa: a inicialização da cabeça é a primeira
+        # fonte de aleatoriedade, e vem já na construção do modelo.
+        if seed is not None:
+            set_seed(seed)
+
         # Extraindo hiperparâmetros
         width = self.hyperparameters.width
         height = self.hyperparameters.height
@@ -128,11 +169,7 @@ class TrainingStrategy():
             transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ])
 
-        val_transform = transforms.Compose([
-            transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ])
+        val_transform = build_eval_transform()
 
         # Criando datasets do PyTorch
         train_dataset = CellClassificationDataset(
@@ -461,18 +498,20 @@ class TrainingStrategy():
         # estar em overfitting).
         model.load_state_dict(best_model_state)
 
-        # Salva a curva de aprendizado (loss) e a evolução das métricas macro
-        # da última época.
-        self._save_learning_curves(
-            history=history,
-            output_dir=Path(output_dir),
-            best_epoch=best_epoch,
-        )
-
-        # Persiste o modelo da melhor época. O checkpoint carrega junto o
-        # label_space e a arquitetura: sem eles, um state_dict solto não diz a que
-        # tarefa pertence nem o que significa o índice 2 de uma predição.
+        # A assinatura permite output_dir=None (treino sem artefatos), então todo
+        # acesso a ele precisa ser guardado — este bloco final não era, e quebrava.
         if output_dir is not None:
+            # Salva a curva de aprendizado (loss) e a evolução das métricas macro
+            # da última época.
+            self._save_learning_curves(
+                history=history,
+                output_dir=Path(output_dir),
+                best_epoch=best_epoch,
+            )
+
+            # Persiste o modelo da melhor época. O checkpoint carrega junto o
+            # label_space e a arquitetura: sem eles, um state_dict solto não diz a
+            # que tarefa pertence nem o que significa o índice 2 de uma predição.
             checkpoint_path = Path(output_dir) / 'best_model.pt'
             torch.save(
                 {
