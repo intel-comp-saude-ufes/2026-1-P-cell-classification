@@ -56,33 +56,47 @@ def main():
         # 2 ou 3 chances de destravar o platô antes do early stopping desistir.
         patience=10,
         dropout=0.5,
-        num_classes=6,
         num_workers=10,
         balance_strategy="sampler_sqrt",
         label_smoothing=0.1,      # contra o excesso de confiança (val_loss subindo)
         weight_decay=0.05,        # acima do default do AdamW (0.01)
     )
-    
+
     # ----- Treino único (fora do cross-validation)
     # iterfolds() é um gerador de splits (treino, validação); next() pega o
     # primeiro, dando um único split (~64% treino / ~16% validação, com o
     # restante reservado para teste). Assim treinamos uma vez, em vez das 5
     # execuções do cross_validate.
+    #
+    # O split é calculado UMA vez e reaproveitado pelas três tarefas. Como
+    # iterfolds() estratifica sempre por `bethesda_system`, ele não depende do
+    # espaço de rótulos — então os três modelos veem exatamente as mesmas lâminas
+    # em treino e em validação, e os três resultados são comparáveis entre si.
     train_data, val_data = next(data_processor.iterfolds())
 
     train_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = Path("outputs") / train_id
 
-    training_strategy = TrainingStrategy(h_params, data_processor)
-    result = training_strategy.train(
-        train_data=train_data,
-        val_data=val_data,
-        output_dir=output_dir,
-    )
-    logger.info(
-        f"Melhor modelo: F1={result['best_f1']:.4f} "
-        f"na época {result['best_epoch']}. Artefatos salvos em {output_dir}"
-    )
+    # As três granularidades da mesma tarefa. Não são estágios encadeados: cada
+    # modelo é independente, treinado sobre TODAS as células, mudando só o alvo.
+    tarefas = {
+        "6_classes": data_processor.flat_label_space(),
+        "3_classes": data_processor.grade_label_space(),
+        "2_classes": data_processor.binary_label_space(),
+    }
+
+    resultados = {}
+    for nome, label_space in tarefas.items():
+        logger.info(f"--- Treinando tarefa '{nome}': {label_space.names}")
+
+        output_dir = Path("outputs") / train_id / nome
+
+        training_strategy = TrainingStrategy(h_params, data_processor, label_space)
+        result = training_strategy.train(
+            train_data=train_data,
+            val_data=val_data,
+            output_dir=output_dir,
+        )
+        resultados[nome] = result
     # -----
 
     # # Inicialização do Cross Validation

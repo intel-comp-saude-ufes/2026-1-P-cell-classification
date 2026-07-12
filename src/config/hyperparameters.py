@@ -36,7 +36,6 @@ class Hyperparameters:
         width (int): Largura da imagem.
         height (int): Altura da imagem.
         dropout (float): dropout utilizado na parte linear.
-        num_classes (int): número de classes para o modelo classificar.
         patience (int): nº de épocas sem melhora no F1-macro antes de parar (early stopping).
         min_delta (float): melhora mínima no F1-macro para contar como progresso.
         num_workers (int): nº de processos paralelos para carregar os dados (DataLoader).
@@ -58,7 +57,6 @@ class Hyperparameters:
     width: int
     height: int
     dropout: float
-    num_classes: int
     patience: int = 5
     min_delta: float = 0.0
     num_workers: int = 8

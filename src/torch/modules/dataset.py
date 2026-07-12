@@ -8,7 +8,7 @@ from typing import Callable
 from torch.utils.data import Dataset
 import torchvision.transforms
 
-from src.data.process_data import Cell, DataProcessing
+from src.data.process_data import Cell, DataProcessing, LabelSpace
 
 
 class CellClassificationDataset(Dataset):
@@ -18,10 +18,15 @@ class CellClassificationDataset(Dataset):
     Args:
         Dataset (Dataset): Classe base do PyTorch para datasets.
     """
-    def __init__(self, data: list[Cell], data_processor: DataProcessing, width, height, transform: Callable | None = None):
+    def __init__(self, data: list[Cell], data_processor: DataProcessing, width, height,
+                 transform: Callable | None = None, label_space: LabelSpace | None = None):
         self.data = data
         self.data_processor = data_processor
-        
+
+        # O espaço de rótulos define a tarefa (6, 3 ou 2 classes). Sem ele, cai nas
+        # 6 classes originais.
+        self.label_space = label_space or data_processor.flat_label_space()
+
         if transform is not None:
             self.transform = transform
         else:
@@ -50,6 +55,6 @@ class CellClassificationDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         
-        label = self.data_processor.label2index(cell_info.label)
-        
+        label = self.label_space.index(cell_info.label)
+
         return image, label

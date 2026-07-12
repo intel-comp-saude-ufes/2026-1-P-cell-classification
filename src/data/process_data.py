@@ -13,14 +13,54 @@ from dataclasses import dataclass
 from torch.utils.data import Subset
 from sklearn.model_selection import StratifiedGroupKFold
 
+# Agrupamento clínico dos rótulos do sistema Bethesda. O corte entre baixo e alto
+# grau é o que decide conduta (repetir a citologia vs. encaminhar para colposcopia),
+# e é o agrupamento de 3 classes usado na literatura.
+NEGATIVE_LABEL = "Negative for intraepithelial lesion"
+LOW_GRADE_LABELS = ["ASC-US", "LSIL"]
+HIGH_GRADE_LABELS = ["ASC-H", "HSIL", "SCC"]
+
+
 # ----- Data classes
 @dataclass
 class Cell:
     id: int
-    x: int 
+    x: int
     y: int
     label: str
     image_path: str
+
+
+@dataclass
+class LabelSpace:
+    """
+    Define o espaço de rótulos de UMA tarefa: quais classes existem e como cada
+    rótulo original do dataset mapeia para um índice.
+
+    Existe porque as mesmas células alimentam tarefas de granularidades diferentes.
+    A célula rotulada "HSIL" é a classe 3 na tarefa de 6 classes, a classe 2 ("alto
+    grau") na de 3, e a classe 1 ("lesão") na binária. Sem esta indireção, o
+    mapeamento rótulo -> índice ficaria preso às 6 classes originais.
+
+    Nenhuma célula é removida em nenhuma das tarefas — só re-rotulada. É por isso
+    que as três compartilham exatamente o mesmo split: iterfolds() estratifica
+    sempre por `bethesda_system`, independente do espaço de rótulos escolhido, e
+    portanto os três resultados são comparáveis no mesmo conjunto de teste. Filtrar
+    o metadata e refazer o split por tarefa (um CSV por caso) daria splits
+    incompatíveis, e a comparação entre as tarefas seria ilusória.
+
+    Args:
+        names (list[str]): nomes das classes, na ordem dos índices.
+        mapping (dict[str, int]): rótulo original do dataset -> índice nesta tarefa.
+    """
+    names: list[str]
+    mapping: dict[str, int]
+
+    def __len__(self):
+        return len(self.names)
+
+    def index(self, label: str) -> int:
+        return self.mapping[label]
 # ------
 
 class DataProcessing:
@@ -51,6 +91,40 @@ class DataProcessing:
     
     def get_labels(self):
         return self.labels
+
+    def flat_label_space(self) -> LabelSpace:
+        """As 6 classes originais do Bethesda."""
+        return LabelSpace(
+            names=list(self.labels),
+            mapping={label: i for i, label in enumerate(self.labels)},
+        )
+
+    def grade_label_space(self) -> LabelSpace:
+        """
+        3 classes: negativo / baixo grau / alto grau.
+
+        Funde os pares que o Bethesda define de forma ambígua — ASC-US com LSIL, e
+        ASC-H com HSIL ("atípico, não dá para excluir HSIL"). Como nem os
+        patologistas concordam nessas fronteiras, elas são ruído de rótulo: o
+        agrupamento remove uma distinção que o modelo não tem como aprender.
+        """
+        mapping = {NEGATIVE_LABEL: 0}
+        mapping.update({label: 1 for label in LOW_GRADE_LABELS})
+        mapping.update({label: 2 for label in HIGH_GRADE_LABELS})
+        return LabelSpace(
+            names=["Negative", "Low grade", "High grade"],
+            mapping=mapping,
+        )
+
+    def binary_label_space(self) -> LabelSpace:
+        """2 classes: há lesão ou não. Tudo que não é o negativo vira 'lesão'."""
+        return LabelSpace(
+            names=["Negative", "Lesion"],
+            mapping={
+                label: (0 if label == NEGATIVE_LABEL else 1)
+                for label in self.labels
+            },
+        )
 
     def __process_data(self):
         """

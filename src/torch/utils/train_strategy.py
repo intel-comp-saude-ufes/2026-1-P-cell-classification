@@ -26,7 +26,7 @@ from sklearn.metrics import (
     ConfusionMatrixDisplay,
 )
 
-from src.data.process_data import DataProcessing
+from src.data.process_data import DataProcessing, LabelSpace
 from src.torch.modules.dataset import CellClassificationDataset
 from src.torch.modules.model import CellClassifier
 
@@ -53,9 +53,12 @@ class TrainingStrategy():
     Args:
         ABC (ABC): Modelo abstrato base
     """
-    def __init__(self, hyperparameters, data_processor: DataProcessing):
+    def __init__(self, hyperparameters, data_processor: DataProcessing,
+                 label_space: LabelSpace | None = None):
         self.hyperparameters = hyperparameters
         self.data_processor = data_processor
+        # Define a tarefa: 6, 3 ou 2 classes. Sem ele, as 6 originais.
+        self.label_space = label_space or data_processor.flat_label_space()
 
     # TODO: Treinamento deve retornar algumas informações para o cross validation
     #       para que elas sejam tratadas lá
@@ -67,7 +70,6 @@ class TrainingStrategy():
         lr = self.hyperparameters.learning_rate
         num_epochs = self.hyperparameters.num_epochs
         dropout = self.hyperparameters.dropout
-        num_classes = self.hyperparameters.num_classes
         patience = self.hyperparameters.patience
         min_delta = self.hyperparameters.min_delta
         num_workers = self.hyperparameters.num_workers
@@ -81,8 +83,13 @@ class TrainingStrategy():
         if backbone_lr is None:
             backbone_lr = lr
 
-        # Nomes das classes na ordem dos índices (labels[i] == classe i)
-        class_names = self.data_processor.get_labels()
+        # A tarefa é definida pelo espaço de rótulos, não por um hiperparâmetro:
+        # o nº de classes é uma consequência dela, não um botão a ajustar. Tê-lo
+        # como hiperparâmetro criaria uma segunda fonte de verdade, que poderia
+        # divergir do label_space em silêncio.
+        label_space = self.label_space
+        class_names = label_space.names
+        num_classes = len(label_space)
 
         # Verificando a utilização do cuda
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -132,14 +139,16 @@ class TrainingStrategy():
             train_data,
             data_processor=self.data_processor,
             width=width, height=height,
-            transform=train_transform
+            transform=train_transform,
+            label_space=label_space,
         )
 
         val_dataset = CellClassificationDataset(
             val_data,
             data_processor=self.data_processor,
             width=width, height=height,
-            transform=val_transform
+            transform=val_transform,
+            label_space=label_space,
         )
 
         # Balanceamento de classes (só no treino). Define ou um sampler
@@ -150,8 +159,12 @@ class TrainingStrategy():
         if balance_strategy != "none":
             # Rótulos (índice) de cada amostra de treino. train_data é um Subset
             # de objetos Cell, então lemos os labels sem carregar imagem nenhuma.
+            # Os pesos do balanceamento seguem as classes DA TAREFA. Na tarefa de 3
+            # classes, por exemplo, o desbalanceamento cai de 42:1 para ~4,5:1,
+            # porque as lesões se agrupam — então os pesos têm de ser recalculados
+            # no espaço de rótulos certo, não no das 6 classes originais.
             train_labels = [
-                self.data_processor.label2index(train_data[i].label)
+                label_space.index(train_data[i].label)
                 for i in range(len(train_data))
             ]
             class_counts = Counter(train_labels)
@@ -447,7 +460,7 @@ class TrainingStrategy():
         # Restaura os pesos da melhor época (não os da última, que podem já
         # estar em overfitting).
         model.load_state_dict(best_model_state)
-        
+
         # Salva a curva de aprendizado (loss) e a evolução das métricas macro
         # da última época.
         self._save_learning_curves(
@@ -456,7 +469,30 @@ class TrainingStrategy():
             best_epoch=best_epoch,
         )
 
+        # Persiste o modelo da melhor época. O checkpoint carrega junto o
+        # label_space e a arquitetura: sem eles, um state_dict solto não diz a que
+        # tarefa pertence nem o que significa o índice 2 de uma predição.
+        if output_dir is not None:
+            checkpoint_path = Path(output_dir) / 'best_model.pt'
+            torch.save(
+                {
+                    'model_state_dict': model.state_dict(),
+                    'label_space': label_space,
+                    'dropout': dropout,
+                    'num_classes': num_classes,
+                    'input_size': INPUT_SIZE,
+                    'width': width,
+                    'height': height,
+                    'best_f1': best_f1,
+                    'best_epoch': best_epoch,
+                },
+                checkpoint_path,
+            )
+            logger.info(f'Melhor modelo salvo em {checkpoint_path}')
+
         return {
+            "model": model,
+            "label_space": label_space,
             "best_f1": best_f1,
             "best_epoch": best_epoch,
             "history": history,
