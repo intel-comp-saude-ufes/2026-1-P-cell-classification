@@ -74,6 +74,8 @@ class TrainingStrategy():
         balance_strategy = self.hyperparameters.balance_strategy
         trainable_blocks = self.hyperparameters.trainable_blocks
         freeze_epochs = self.hyperparameters.freeze_epochs
+        label_smoothing = self.hyperparameters.label_smoothing
+        weight_decay = self.hyperparameters.weight_decay
         # Sem backbone_lr explícito, a backbone treina no mesmo LR da cabeça.
         backbone_lr = self.hyperparameters.backbone_lr
         if backbone_lr is None:
@@ -99,8 +101,22 @@ class TrainingStrategy():
             transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.RandomRotation(20),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            # Rotação total: uma célula não tem orientação canônica, então girá-la
+            # não muda o rótulo. Diferente de 20 graus, aqui não há custo semântico.
+            transforms.RandomRotation(180),
+            # Deslocamento e zoom leves: impedem o modelo de assumir que o núcleo
+            # está sempre exatamente no centro do recorte.
+            transforms.RandomResizedCrop(
+                INPUT_SIZE, scale=(0.8, 1.0), ratio=(0.9, 1.1), antialias=True
+            ),
+            # Jitter de cor forte, com HUE. Este é o augmentation de maior retorno
+            # neste dataset: o desbalanceamento não é o único problema — são apenas
+            # 400 lâminas, e a variação do protocolo de coloração de Papanicolaou
+            # entre elas é o domain shift real. Sem isto, a rede aprende a coloração
+            # da lâmina (que vaza junto com o grupo) em vez da morfologia da célula.
+            transforms.ColorJitter(
+                brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05
+            ),
             transforms.ToTensor(),
             transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ])
@@ -211,12 +227,33 @@ class TrainingStrategy():
         # aprender do zero). Os parâmetros congelados entram no otimizador desde
         # já — sem gradiente, o AdamW simplesmente os ignora, e ao descongelar
         # não é preciso reconstruí-lo.
-        optimizer = torch.optim.AdamW([
-            {"params": model.cnn_features.parameters(), "lr": backbone_lr},
-            {"params": model.fc.parameters(), "lr": lr},
-        ])
+        optimizer = torch.optim.AdamW(
+            [
+                {"params": model.cnn_features.parameters(), "lr": backbone_lr},
+                {"params": model.fc.parameters(), "lr": lr},
+            ],
+            weight_decay=weight_decay,
+        )
+
+        # Agendamento do LR reativo, não por cronograma fixo. Um cosseno exigiria
+        # saber de antemão quantas épocas o treino vai durar — mas quem decide isso
+        # é o early stopping, e um T_max errado deixaria o scheduler decorativo (ou,
+        # se o treino passasse dele, faria o LR voltar a SUBIR, já que o cosseno é
+        # periódico). O ReduceLROnPlateau reage ao próprio F1: quando ele empaca,
+        # corta o LR pela metade, dando ao modelo a chance de assentar num passo
+        # menor. Com patience=3 aqui e patience=10 no early stopping, o scheduler
+        # tem 2 ou 3 tentativas de destravar o platô antes do treino desistir.
+        # Ambos os grupos (backbone e cabeça) são cortados, mantendo a proporção.
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='max',      # o F1 é para MAXIMIZAR (ao contrário de uma loss)
+            factor=0.5,
+            patience=3,
+        )
         # weight=None (padrão) quando não é 'weighted_loss'.
-        loss_func = nn.CrossEntropyLoss(weight=class_weight_tensor)
+        loss_func = nn.CrossEntropyLoss(
+            weight=class_weight_tensor, label_smoothing=label_smoothing
+        )
 
         # Mixed precision (AMP): roda as convoluções em float16 e mantém em
         # float32 só o que precisa de precisão (a loss, a atualização dos pesos).
@@ -345,6 +382,18 @@ class TrainingStrategy():
             precision = float(precision_pc.mean())
             recall = float(recall_pc.mean())
             f1 = float(f1_pc.mean())
+
+            # O scheduler é reativo: precisa da métrica que está monitorando. Por
+            # isso o step() vem aqui, depois do F1 calculado — e não logo após o
+            # laço de treino, como seria num scheduler de cronograma fixo.
+            lr_antes = optimizer.param_groups[0]['lr']
+            scheduler.step(f1)
+            if optimizer.param_groups[0]['lr'] < lr_antes:
+                logger.info(
+                    f'Época {epoch+1}: F1 em platô, LR cortado pela metade '
+                    f'(backbone: {optimizer.param_groups[0]["lr"]:.2e}, '
+                    f'cabeça: {optimizer.param_groups[1]["lr"]:.2e}).'
+                )
 
             history.append({
                 "epoch": epoch + 1,

@@ -45,6 +45,12 @@ class Hyperparameters:
             - "sampler": WeightedRandomSampler com peso 1/frequência.
             - "sampler_sqrt": WeightedRandomSampler com peso 1/sqrt(frequência).
             - "weighted_loss": CrossEntropyLoss ponderada pelo inverso da frequência.
+        label_smoothing (float): suaviza os rótulos, distribuindo esta fração da
+            probabilidade entre as demais classes em vez de exigir 1.0 na correta.
+            Ataca o excesso de confiança (val_loss subindo com o F1 parado). Aqui é
+            também conceitualmente honesto: "ASC-H = não dá pra excluir HSIL" é um
+            rótulo que de fato não é 100% certo, nem entre patologistas. 0.1 é o usual.
+        weight_decay (float): regularização L2 do AdamW. O default do PyTorch é 0.01.
     """
     learning_rate: float
     batch_size: int
@@ -60,3 +66,5 @@ class Hyperparameters:
     backbone_lr: float | None = None
     trainable_blocks: int | None = None
     freeze_epochs: int = 0
+    label_smoothing: float = 0.0
+    weight_decay: float = 0.01

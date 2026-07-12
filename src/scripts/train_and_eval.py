@@ -44,14 +44,23 @@ def main():
         batch_size=32,
         learning_rate=0.001,      # cabeça (fc): pesos aleatórios, aprende do zero
         backbone_lr=0.0001,       # backbone: pré-treinada, só ajuste fino
-        trainable_blocks=None,       # só os 2 blocos finais adaptam (3,88M de 10,70M)
-        freeze_epochs=2,          # 2 épocas treinando só a cabeça, antes de descongelar
+        # Backbone INTEIRA treinável. Congelar os blocos iniciais é a receita padrão
+        # em imagens naturais, mas aqui ela se inverte: o que separa ASC-H de HSIL é
+        # a granularidade da cromatina — textura de baixo/médio nível, justamente o
+        # que esses blocos codificam. Congelá-los travou o F1 em 0,47 (contra 0,56
+        # com tudo treinável), independentemente do learning rate.
+        trainable_blocks=None,
+        freeze_epochs=2,          # warm-up: 2 épocas treinando só a cabeça
         num_epochs=100,
+        # Precisa ser folgada o bastante para o ReduceLROnPlateau (patience=3) ter
+        # 2 ou 3 chances de destravar o platô antes do early stopping desistir.
         patience=10,
         dropout=0.5,
         num_classes=6,
         num_workers=10,
-        balance_strategy="sampler_sqrt"
+        balance_strategy="sampler_sqrt",
+        label_smoothing=0.1,      # contra o excesso de confiança (val_loss subindo)
+        weight_decay=0.05,        # acima do default do AdamW (0.01)
     )
     
     # ----- Treino único (fora do cross-validation)
