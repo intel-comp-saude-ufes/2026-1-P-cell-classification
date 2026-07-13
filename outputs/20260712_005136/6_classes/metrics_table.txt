@@ -1,0 +1,29 @@
+Tabela de métricas — tarefa de 6 classes ['SCC', 'Negative for intraepithelial lesion', 'LSIL', 'HSIL', 'ASC-H', 'ASC-US']
+
+Reconstruída dos checkpoints da run: nenhum modelo foi retreinado, só
+reavaliado. Os números da validação cruzada conferem com o best_f1 que
+cada checkpoint registrou, o que confirma que o split é o mesmo do treino.
+
+  Métrica      Validação cruzada      Modelos individuais    Ensemble    
+               (média ± desvio)       no teste (média ± σ)   (teste final)
+  F1-macro     0.6083 ± 0.0284        0.5975 ± 0.0155        0.6316      
+  Precisão     0.6173 ± 0.0273        0.6047 ± 0.0186        0.6447      
+  Recall       0.6415 ± 0.0666        0.6038 ± 0.0096        0.6279      
+  Acurácia     0.7801 ± 0.0280        0.8064 ± 0.0087        0.8289      
+
+Validação cruzada, por fold (cada modelo no seu conjunto de validação):
+  fold     F1-macro   Precisão   Recall     Acurácia  
+  1        0.6029     0.6282     0.5985     0.8143    
+  2        0.6133     0.6533     0.6525     0.7428    
+  3        0.5878     0.6104     0.5764     0.7638    
+  4        0.6542     0.6164     0.7485     0.7976    
+  5        0.5832     0.5782     0.6315     0.7823    
+
+Teste, por modelo (os k modelos no MESMO conjunto de teste — aqui o desvio
+mede só a instabilidade do treino, já que os dados não mudam):
+  modelo   F1-macro   Precisão   Recall     Acurácia  
+  1        0.6015     0.6167     0.6035     0.7997    
+  2        0.6036     0.6052     0.6084     0.8160    
+  3        0.6062     0.6205     0.6078     0.8064    
+  4        0.6061     0.6078     0.6120     0.8139    
+  5        0.5700     0.5734     0.5874     0.7959    

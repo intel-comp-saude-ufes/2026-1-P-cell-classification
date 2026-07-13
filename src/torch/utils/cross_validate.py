@@ -91,6 +91,7 @@ class CrossValidation():
                     'f1_macro': melhor['f1_score'],
                     'precision_macro': melhor['precision'],
                     'recall_macro': melhor['recall'],
+                    'accuracy': melhor['accuracy'],
                     'per_class': melhor['per_class'],
                 })
 
@@ -134,7 +135,7 @@ class CrossValidation():
 
         agregado = {
             metrica: mean_std([f[metrica] for f in folds])
-            for metrica in ('f1_macro', 'precision_macro', 'recall_macro')
+            for metrica in ('f1_macro', 'precision_macro', 'recall_macro', 'accuracy')
         }
 
         agregado['per_class'] = {
@@ -159,10 +160,13 @@ class CrossValidation():
             f'Tarefa: {len(class_names)} classes {class_names}',
             '',
             'Por fold:',
-            f'  {"fold":<6} {"época":<7} {"F1-macro":<10}',
+            f'  {"fold":<6} {"época":<7} {"F1-macro":<10} {"Precision":<10} '
+            f'{"Recall":<10} {"Acurácia":<10}',
         ]
         linhas += [
-            f'  {f["fold"]:<6} {f["best_epoch"]:<7} {f["f1_macro"]:<10.4f}'
+            f'  {f["fold"]:<6} {f["best_epoch"]:<7} {f["f1_macro"]:<10.4f} '
+            f'{f["precision_macro"]:<10.4f} {f["recall_macro"]:<10.4f} '
+            f'{f["accuracy"]:<10.4f}'
             for f in folds
         ]
 
@@ -172,6 +176,9 @@ class CrossValidation():
             f'  F1-macro        : {agregado["f1_macro"]["mean"]:.4f} ± {agregado["f1_macro"]["std"]:.4f}',
             f'  Precision-macro : {agregado["precision_macro"]["mean"]:.4f} ± {agregado["precision_macro"]["std"]:.4f}',
             f'  Recall-macro    : {agregado["recall_macro"]["mean"]:.4f} ± {agregado["recall_macro"]["std"]:.4f}',
+            # A acurácia não é macro: pesa cada AMOSTRA igual, não cada classe.
+            # Num dataset desbalanceado ela é sempre a mais generosa das quatro.
+            f'  Acurácia        : {agregado["accuracy"]["mean"]:.4f} ± {agregado["accuracy"]["std"]:.4f}',
             '',
             'F1 por classe (média ± desvio). Um desvio grande numa classe de suporte',
             'pequeno significa que o F1-macro daquele fold foi decidido no cara-ou-coroa:',

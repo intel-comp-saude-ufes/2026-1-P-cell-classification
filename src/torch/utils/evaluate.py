@@ -28,6 +28,46 @@ from src.torch.utils.train_strategy import build_eval_transform
 
 logger = logging.getLogger(__name__)
 
+# As quatro métricas reportadas, na ordem em que aparecem nas tabelas. Uma única
+# lista para não haver duas ordens diferentes entre o cálculo e a escrita.
+METRICAS = (
+    ('f1_macro', 'F1-macro'),
+    ('precision_macro', 'Precisão'),
+    ('recall_macro', 'Recall'),
+    ('accuracy', 'Acurácia'),
+)
+
+
+def aggregate_metrics(por_modelo):
+    """
+    Média e desvio de cada métrica ENTRE os k modelos.
+
+    É o desempenho esperado de UM modelo treinado com esta configuração, com barra
+    de erro — o número honesto a reportar. Quando os k modelos são medidos no mesmo
+    conjunto (o teste), o desvio mede só a instabilidade do treino: a variação não
+    vem da amostra, vem da semente.
+
+    É função de módulo, e não método do Evaluator, porque a conta não depende de
+    nada do avaliador — e o recompute_metrics.py agrega com ela os folds da
+    validação cruzada reavaliados, sem precisar instanciar coisa nenhuma.
+
+    Args:
+        por_modelo (list[dict]): as métricas de cada modelo, como saem de evaluate().
+
+    Returns:
+        dict: métrica -> {'mean', 'std'}.
+    """
+    def mean_std(valores):
+        return {
+            'mean': statistics.mean(valores),
+            'std': statistics.stdev(valores) if len(valores) > 1 else 0.0,
+        }
+
+    return {
+        metrica: mean_std([m[metrica] for m in por_modelo])
+        for metrica, _ in METRICAS
+    }
+
 
 class Evaluator():
     """
@@ -144,14 +184,11 @@ class Evaluator():
         preds_ensemble = probs_ensemble.argmax(dim=1)
         metricas_ensemble = self._metrics(labels, preds_ensemble)
 
-        f1s = [m['f1_macro'] for m in por_modelo]
-        agregado = {
-            'mean': statistics.mean(f1s),
-            'std': statistics.stdev(f1s) if len(f1s) > 1 else 0.0,
-        }
+        agregado = aggregate_metrics(por_modelo)
 
         logger.info(
-            f'Teste: F1-macro individual = {agregado["mean"]:.4f} ± {agregado["std"]:.4f} '
+            f'Teste: F1-macro individual = {agregado["f1_macro"]["mean"]:.4f} '
+            f'± {agregado["f1_macro"]["std"]:.4f} '
             f'| ensemble = {metricas_ensemble["f1_macro"]:.4f}'
         )
 
@@ -199,24 +236,37 @@ class Evaluator():
         fig.savefig(output_dir / 'test_confusion_matrix.png', dpi=150)
         plt.close(fig)
 
+        rotulos = [rotulo for _, rotulo in METRICAS]
+        chaves = [chave for chave, _ in METRICAS]
+
         linhas = [
             f'Conjunto de TESTE — {len(labels)} células, {num_classes} classes',
             '',
-            'F1-macro de cada modelo (um por fold da validação cruzada):',
+            'Cada modelo (um por fold da validação cruzada):',
+            f'  {"modelo":<8} ' + ' '.join(f'{r:<10}' for r in rotulos),
         ]
         linhas += [
-            f'  modelo {i}: {m["f1_macro"]:.4f}'
+            f'  {i:<8} ' + ' '.join(f'{m[c]:<10.4f}' for c in chaves)
             for i, m in enumerate(por_modelo, start=1)
         ]
         linhas += [
             '',
-            f'  média ± desvio : {agregado["mean"]:.4f} ± {agregado["std"]:.4f}',
+            'Modelo individual (média ± desvio entre os modelos) — o desempenho',
+            'esperado de UM modelo treinado com esta configuração:',
+        ]
+        linhas += [
+            f'  {rotulo:<10}: {agregado[chave]["mean"]:.4f} ± {agregado[chave]["std"]:.4f}'
+            for chave, rotulo in METRICAS
+        ]
+        linhas += [
             '',
             'Ensemble dos modelos (média das probabilidades):',
-            f'  F1-macro  : {ensemble["f1_macro"]:.4f}',
-            f'  Precision : {ensemble["precision_macro"]:.4f}',
-            f'  Recall    : {ensemble["recall_macro"]:.4f}',
-            f'  Accuracy  : {ensemble["accuracy"]:.4f}',
+        ]
+        linhas += [
+            f'  {rotulo:<10}: {ensemble[chave]:.4f}'
+            for chave, rotulo in METRICAS
+        ]
+        linhas += [
             '',
             'Relatório por classe (ensemble):',
             '',

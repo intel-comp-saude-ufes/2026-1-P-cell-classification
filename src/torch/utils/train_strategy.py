@@ -433,6 +433,8 @@ class TrainingStrategy():
             recall = float(recall_pc.mean())
             f1 = float(f1_pc.mean())
 
+            accuracy = float(np.mean(np.array(all_preds) == np.array(all_labels)))
+
             # O scheduler é reativo: precisa da métrica que está monitorando. Por
             # isso o step() vem aqui, depois do F1 calculado — e não logo após o
             # laço de treino, como seria num scheduler de cronograma fixo.
@@ -452,6 +454,7 @@ class TrainingStrategy():
                 "precision": precision,
                 "recall": recall,
                 "f1_score": f1,
+                "accuracy": accuracy,
                 "per_class": per_class,
             })
             

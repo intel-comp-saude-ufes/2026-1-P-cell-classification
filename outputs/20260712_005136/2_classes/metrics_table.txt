@@ -1,0 +1,29 @@
+Tabela de métricas — tarefa de 2 classes ['Negative', 'Lesion']
+
+Reconstruída dos checkpoints da run: nenhum modelo foi retreinado, só
+reavaliado. Os números da validação cruzada conferem com o best_f1 que
+cada checkpoint registrou, o que confirma que o split é o mesmo do treino.
+
+  Métrica      Validação cruzada      Modelos individuais    Ensemble    
+               (média ± desvio)       no teste (média ± σ)   (teste final)
+  F1-macro     0.9082 ± 0.0177        0.9126 ± 0.0045        0.9225      
+  Precisão     0.9085 ± 0.0187        0.9107 ± 0.0036        0.9221      
+  Recall       0.9084 ± 0.0174        0.9150 ± 0.0068        0.9228      
+  Acurácia     0.9113 ± 0.0162        0.9190 ± 0.0039        0.9285      
+
+Validação cruzada, por fold (cada modelo no seu conjunto de validação):
+  fold     F1-macro   Precisão   Recall     Acurácia  
+  1        0.8988     0.9005     0.8972     0.9052    
+  2        0.9255     0.9281     0.9245     0.9259    
+  3        0.9284     0.9291     0.9278     0.9288    
+  4        0.8884     0.8897     0.8874     0.8895    
+  5        0.8997     0.8953     0.9051     0.9073    
+
+Teste, por modelo (os k modelos no MESMO conjunto de teste — aqui o desvio
+mede só a instabilidade do treino, já que os dados não mudam):
+  modelo   F1-macro   Precisão   Recall     Acurácia  
+  1        0.9055     0.9083     0.9029     0.9134    
+  2        0.9148     0.9124     0.9174     0.9210    
+  3        0.9168     0.9152     0.9185     0.9230    
+  4        0.9110     0.9061     0.9172     0.9168    
+  5        0.9151     0.9115     0.9192     0.9210    

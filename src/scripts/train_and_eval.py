@@ -21,6 +21,14 @@ from src.torch.utils.cross_validate import CrossValidation
 METADATA_PATH = Path("data/raw/classifications.csv")
 IMAGE_FOLDER_PATH = Path("data/raw/images")
 
+# Duas sementes, dois eixos independentes. RANDOM_STATE semeia o SPLIT (quais
+# lâminas caem no teste e como os folds se formam); TRAIN_SEED semeia o TREINO
+# (inicialização da cabeça, dropout, augmentation, sampler), e cada fold usa
+# TRAIN_SEED + fold.
+RANDOM_STATE = 5
+TRAIN_SEED = 42
+K_FOLDS = 5
+
 setup_logging(level="INFO")
 logger = logging.getLogger(__name__)
 # -----
@@ -32,7 +40,11 @@ def main():
     # Leitura e processamento dos dados
     logger.info(f"Lendo metadados do dataset em: {METADATA_PATH}")
     metadata_df = pd.read_csv(METADATA_PATH)
-    data_processor = DataProcessing(metadata=metadata_df, image_folder_path=IMAGE_FOLDER_PATH, random_state=5)
+    data_processor = DataProcessing(
+        metadata=metadata_df,
+        image_folder_path=IMAGE_FOLDER_PATH,
+        random_state=RANDOM_STATE,
+    )
     
     logger.info(f"Total de amostras no dataset: {len(data_processor)}")
     logger.info(f"Labels: {data_processor.get_labels()}")
@@ -94,12 +106,12 @@ def main():
         #    F1-macro pesa igual uma classe de ~28 amostras e uma de ~1143.
         cross_val = CrossValidation(
             data_processor=data_processor,
-            k_folds=5,
+            k_folds=K_FOLDS,
             label_space=label_space,
         )
         cv = cross_val.cross_validate(
             hyperparameters=h_params,
-            seed=42,
+            seed=TRAIN_SEED,
             output_dir=output_dir,
         )
 
@@ -123,8 +135,8 @@ def main():
             f"  {nome:<10} "
             f"validação cruzada: {r['cv']['aggregate']['f1_macro']['mean']:.4f} "
             f"± {r['cv']['aggregate']['f1_macro']['std']:.4f}  |  "
-            f"teste: {r['test']['aggregate']['mean']:.4f} "
-            f"± {r['test']['aggregate']['std']:.4f}  |  "
+            f"teste: {r['test']['aggregate']['f1_macro']['mean']:.4f} "
+            f"± {r['test']['aggregate']['f1_macro']['std']:.4f}  |  "
             f"teste (ensemble): {r['test']['ensemble']['f1_macro']:.4f}"
         )
 
