@@ -23,7 +23,7 @@ from src.config.hyperparameters import Hyperparameters
 from src.config.logging import setup_logging
 from src.data.process_data import DataProcessing
 from src.torch.modules.model import load_from_checkpoint
-from src.torch.utils.evaluate import METRICAS, Evaluator, aggregate_metrics
+from src.torch.utils.evaluate import LARGURA, METRICAS, Evaluator, aggregate_metrics
 from src.scripts.train_and_eval import (
     IMAGE_FOLDER_PATH,
     K_FOLDS,
@@ -151,13 +151,13 @@ def _write_table(task_dir, evaluator, cv_por_fold, cv_agregado, teste):
         'reavaliado. Os números da validação cruzada conferem com o best_f1 que',
         'cada checkpoint registrou, o que confirma que o split é o mesmo do treino.',
         '',
-        f'  {"Métrica":<12} {"Validação cruzada":<22} '
+        f'  {"Métrica":<{LARGURA}} {"Validação cruzada":<22} '
         f'{"Modelos individuais":<22} {"Ensemble":<12}',
-        f'  {"":<12} {"(média ± desvio)":<22} '
+        f'  {"":<{LARGURA}} {"(média ± desvio)":<22} '
         f'{"no teste (média ± σ)":<22} {"(teste final)":<12}',
     ]
     linhas += [
-        f'  {rotulo:<12} {media_desvio(cv_agregado, chave):<22} '
+        f'  {rotulo:<{LARGURA}} {media_desvio(cv_agregado, chave):<22} '
         f'{media_desvio(teste["aggregate"], chave):<22} '
         f'{teste["ensemble"][chave]:<12.4f}'
         for chave, rotulo in metricas
@@ -169,10 +169,10 @@ def _write_table(task_dir, evaluator, cv_por_fold, cv_agregado, teste):
     linhas += [
         '',
         'Validação cruzada, por fold (cada modelo no seu conjunto de validação):',
-        f'  {"fold":<8} ' + ' '.join(f'{r:<10}' for r in rotulos),
+        f'  {"fold":<8} ' + ' '.join(f'{r:<{LARGURA}}' for r in rotulos),
     ]
     linhas += [
-        f'  {fold:<8} ' + ' '.join(f'{m[c]:<10.4f}' for c in chaves)
+        f'  {fold:<8} ' + ' '.join(f'{m[c]:<{LARGURA}.4f}' for c in chaves)
         for fold, m in enumerate(cv_por_fold, start=1)
     ]
 
@@ -180,10 +180,10 @@ def _write_table(task_dir, evaluator, cv_por_fold, cv_agregado, teste):
         '',
         'Teste, por modelo (os k modelos no MESMO conjunto de teste — aqui o desvio',
         'mede só a instabilidade do treino, já que os dados não mudam):',
-        f'  {"modelo":<8} ' + ' '.join(f'{r:<10}' for r in rotulos),
+        f'  {"modelo":<8} ' + ' '.join(f'{r:<{LARGURA}}' for r in rotulos),
     ]
     linhas += [
-        f'  {i:<8} ' + ' '.join(f'{m[c]:<10.4f}' for c in chaves)
+        f'  {i:<8} ' + ' '.join(f'{m[c]:<{LARGURA}.4f}' for c in chaves)
         for i, m in enumerate(teste['per_model'], start=1)
     ]
 

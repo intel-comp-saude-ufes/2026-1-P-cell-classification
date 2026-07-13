@@ -28,14 +28,19 @@ from src.torch.utils.train_strategy import build_eval_transform
 
 logger = logging.getLogger(__name__)
 
-# As quatro métricas reportadas, na ordem em que aparecem nas tabelas. Uma única
-# lista para não haver duas ordens diferentes entre o cálculo e a escrita.
 METRICAS = (
     ('f1_macro', 'F1-macro'),
-    ('precision_macro', 'Precisão'),
-    ('recall_macro', 'Recall'),
+    ('precision_macro', 'Precision-macro'),
+    ('recall_macro', 'Recall-macro'),
+    ('f1_weighted', 'F1-weighted'),
+    ('precision_weighted', 'Precision-weighted'),
+    ('recall_weighted', 'Recall-weighted'),
     ('accuracy', 'Acurácia'),
 )
+
+# Largura das colunas de métrica nas tabelas .txt: o maior rótulo mais um espaço,
+# para que cabeçalho e valores caiam na mesma grade sem ninguém contar caractere.
+LARGURA = max(len(rotulo) for _, rotulo in METRICAS) + 1
 
 
 def aggregate_metrics(por_modelo):
@@ -211,13 +216,20 @@ class Evaluator():
 
     def _metrics(self, labels, preds):
         num_classes = len(self.label_space)
-        precision, recall, f1, _ = precision_recall_fscore_support(
+        precision, recall, f1, support = precision_recall_fscore_support(
             labels, preds, labels=range(num_classes), average=None, zero_division=0,
         )
+
+        def ponderada(por_classe):
+            return float((por_classe * support).sum() / support.sum())
+
         return {
             'f1_macro': float(f1.mean()),
             'precision_macro': float(precision.mean()),
             'recall_macro': float(recall.mean()),
+            'f1_weighted': ponderada(f1),
+            'precision_weighted': ponderada(precision),
+            'recall_weighted': ponderada(recall),
             'accuracy': float((torch.as_tensor(preds) == torch.as_tensor(labels)).float().mean()),
         }
 
@@ -243,10 +255,10 @@ class Evaluator():
             f'Conjunto de TESTE — {len(labels)} células, {num_classes} classes',
             '',
             'Cada modelo (um por fold da validação cruzada):',
-            f'  {"modelo":<8} ' + ' '.join(f'{r:<10}' for r in rotulos),
+            f'  {"modelo":<8} ' + ' '.join(f'{r:<{LARGURA}}' for r in rotulos),
         ]
         linhas += [
-            f'  {i:<8} ' + ' '.join(f'{m[c]:<10.4f}' for c in chaves)
+            f'  {i:<8} ' + ' '.join(f'{m[c]:<{LARGURA}.4f}' for c in chaves)
             for i, m in enumerate(por_modelo, start=1)
         ]
         linhas += [
@@ -255,7 +267,7 @@ class Evaluator():
             'esperado de UM modelo treinado com esta configuração:',
         ]
         linhas += [
-            f'  {rotulo:<10}: {agregado[chave]["mean"]:.4f} ± {agregado[chave]["std"]:.4f}'
+            f'  {rotulo:<{LARGURA}}: {agregado[chave]["mean"]:.4f} ± {agregado[chave]["std"]:.4f}'
             for chave, rotulo in METRICAS
         ]
         linhas += [
@@ -263,7 +275,7 @@ class Evaluator():
             'Ensemble dos modelos (média das probabilidades):',
         ]
         linhas += [
-            f'  {rotulo:<10}: {ensemble[chave]:.4f}'
+            f'  {rotulo:<{LARGURA}}: {ensemble[chave]:.4f}'
             for chave, rotulo in METRICAS
         ]
         linhas += [

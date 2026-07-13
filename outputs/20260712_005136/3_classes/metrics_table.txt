@@ -4,26 +4,29 @@ Reconstruída dos checkpoints da run: nenhum modelo foi retreinado, só
 reavaliado. Os números da validação cruzada conferem com o best_f1 que
 cada checkpoint registrou, o que confirma que o split é o mesmo do treino.
 
-  Métrica      Validação cruzada      Modelos individuais    Ensemble    
-               (média ± desvio)       no teste (média ± σ)   (teste final)
-  F1-macro     0.8420 ± 0.0041        0.8263 ± 0.0112        0.8572      
-  Precisão     0.8469 ± 0.0153        0.8229 ± 0.0110        0.8574      
-  Recall       0.8423 ± 0.0056        0.8321 ± 0.0114        0.8570      
-  Acurácia     0.8798 ± 0.0120        0.8790 ± 0.0075        0.9030      
+  Métrica             Validação cruzada      Modelos individuais    Ensemble    
+                      (média ± desvio)       no teste (média ± σ)   (teste final)
+  F1-macro            0.8420 ± 0.0041        0.8263 ± 0.0112        0.8572      
+  Precision-macro     0.8469 ± 0.0153        0.8229 ± 0.0110        0.8574      
+  Recall-macro        0.8423 ± 0.0056        0.8321 ± 0.0114        0.8570      
+  F1-weighted         0.8787 ± 0.0121        0.8803 ± 0.0080        0.9031      
+  Precision-weighted  0.8807 ± 0.0122        0.8831 ± 0.0077        0.9031      
+  Recall-weighted     0.8798 ± 0.0120        0.8790 ± 0.0075        0.9030      
+  Acurácia            0.8798 ± 0.0120        0.8790 ± 0.0075        0.9030      
 
 Validação cruzada, por fold (cada modelo no seu conjunto de validação):
-  fold     F1-macro   Precisão   Recall     Acurácia  
-  1        0.8366     0.8303     0.8436     0.8807    
-  2        0.8470     0.8705     0.8344     0.8838    
-  3        0.8398     0.8374     0.8454     0.8821    
-  4        0.8447     0.8452     0.8487     0.8600    
-  5        0.8417     0.8509     0.8393     0.8925    
+  fold     F1-macro            Precision-macro     Recall-macro        F1-weighted         Precision-weighted  Recall-weighted     Acurácia           
+  1        0.8366              0.8303              0.8436              0.8819              0.8834              0.8807              0.8807             
+  2        0.8470              0.8705              0.8344              0.8785              0.8801              0.8838              0.8838             
+  3        0.8398              0.8374              0.8454              0.8840              0.8880              0.8821              0.8821             
+  4        0.8447              0.8452              0.8487              0.8585              0.8603              0.8600              0.8600             
+  5        0.8417              0.8509              0.8393              0.8904              0.8917              0.8925              0.8925             
 
 Teste, por modelo (os k modelos no MESMO conjunto de teste — aqui o desvio
 mede só a instabilidade do treino, já que os dados não mudam):
-  modelo   F1-macro   Precisão   Recall     Acurácia  
-  1        0.8187     0.8197     0.8195     0.8779    
-  2        0.8126     0.8061     0.8233     0.8674    
-  3        0.8302     0.8289     0.8335     0.8808    
-  4        0.8284     0.8244     0.8353     0.8804    
-  5        0.8416     0.8354     0.8486     0.8883    
+  modelo   F1-macro            Precision-macro     Recall-macro        F1-weighted         Precision-weighted  Recall-weighted     Acurácia           
+  1        0.8187              0.8197              0.8195              0.8791              0.8812              0.8779              0.8779             
+  2        0.8126              0.8061              0.8233              0.8677              0.8711              0.8674              0.8674             
+  3        0.8302              0.8289              0.8335              0.8823              0.8848              0.8808              0.8808             
+  4        0.8284              0.8244              0.8353              0.8829              0.8869              0.8804              0.8804             
+  5        0.8416              0.8354              0.8486              0.8897              0.8915              0.8883              0.8883             
