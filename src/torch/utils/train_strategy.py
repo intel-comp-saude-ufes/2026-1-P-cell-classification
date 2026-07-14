@@ -12,7 +12,7 @@ import logging
 import matplotlib
 import numpy as np
 
-matplotlib.use('Agg')  # backend sem interface gráfica, para salvar em arquivo
+matplotlib.use('Agg')
 
 from pathlib import Path
 from collections import Counter
@@ -34,17 +34,10 @@ from src.torch.modules.model import CellClassifier
 
 logger = logging.getLogger(__name__)
 
-# Estatísticas do ImageNet, usadas na normalização. O backbone (EfficientNet-B3)
-# é pré-treinado no ImageNet e espera receber entradas nessa distribuição.
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
-# Resolução de entrada da EfficientNet-B3. O recorte ao redor do núcleo
-# (width x height) é a região biológica de interesse; já isto é o que a rede
-# espera receber. São coisas diferentes: a B3 foi pré-treinada em 300x300, e
-# alimentá-la na resolução do recorte (100x100) faz os filtros pré-treinados
-# operarem numa escala distinta da que aprenderam, degradando o transfer
-# learning. Por isso redimensionamos o recorte antes de entrar no modelo.
+# Resolução de entrada da EfficientNet-B3.
 INPUT_SIZE = 300
 
 
@@ -93,14 +86,11 @@ class TrainingStrategy():
                  label_space: LabelSpace | None = None):
         self.hyperparameters = hyperparameters
         self.data_processor = data_processor
+        
         # Define a tarefa: 6, 3 ou 2 classes. Sem ele, as 6 originais.
         self.label_space = label_space or data_processor.flat_label_space()
 
-    # TODO: Treinamento deve retornar algumas informações para o cross validation
-    #       para que elas sejam tratadas lá
     def train(self, train_data, val_data, output_dir=None, seed=None):
-        # Semeia antes de qualquer coisa: a inicialização da cabeça é a primeira
-        # fonte de aleatoriedade, e vem já na construção do modelo.
         if seed is not None:
             set_seed(seed)
 
@@ -119,15 +109,10 @@ class TrainingStrategy():
         freeze_epochs = self.hyperparameters.freeze_epochs
         label_smoothing = self.hyperparameters.label_smoothing
         weight_decay = self.hyperparameters.weight_decay
-        # Sem backbone_lr explícito, a backbone treina no mesmo LR da cabeça.
         backbone_lr = self.hyperparameters.backbone_lr
         if backbone_lr is None:
             backbone_lr = lr
 
-        # A tarefa é definida pelo espaço de rótulos, não por um hiperparâmetro:
-        # o nº de classes é uma consequência dela, não um botão a ajustar. Tê-lo
-        # como hiperparâmetro criaria uma segunda fonte de verdade, que poderia
-        # divergir do label_space em silêncio.
         label_space = self.label_space
         class_names = label_space.names
         num_classes = len(label_space)
@@ -136,32 +121,20 @@ class TrainingStrategy():
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         # Transformações nos dados.
-        # - Resize (INPUT_SIZE): obrigatório, leva o recorte à resolução em que o
-        #   backbone foi pré-treinado. Vem antes das augmentations para que a
-        #   rotação interpole na resolução final, em vez de ter seu serrilhado
-        #   ampliado pelo upsample posterior.
-        # - Normalize (ImageNet): obrigatório, pois o backbone pré-treinado
-        #   espera entradas nessa distribuição.
-        # - Augmentation (flips/rotação/jitter): aplicado SÓ no treino, como
-        #   regularizador contra overfitting.
-        # A validação recebe só Resize + ToTensor + Normalize, para ser determinística.
         train_transform = transforms.Compose([
             transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            # Rotação total: uma célula não tem orientação canônica, então girá-la
-            # não muda o rótulo. Diferente de 20 graus, aqui não há custo semântico.
+            
+            # Rotação total
             transforms.RandomRotation(180),
-            # Deslocamento e zoom leves: impedem o modelo de assumir que o núcleo
-            # está sempre exatamente no centro do recorte.
+            
+            # Impedem o modelo de assumir que o núcleo está sempre exatamente no centro do recorte
             transforms.RandomResizedCrop(
                 INPUT_SIZE, scale=(0.8, 1.0), ratio=(0.9, 1.1), antialias=True
             ),
-            # Jitter de cor forte, com HUE. Este é o augmentation de maior retorno
-            # neste dataset: o desbalanceamento não é o único problema — são apenas
-            # 400 lâminas, e a variação do protocolo de coloração de Papanicolaou
-            # entre elas é o domain shift real. Sem isto, a rede aprende a coloração
-            # da lâmina (que vaza junto com o grupo) em vez da morfologia da célula.
+            
+            # Sem isto, a rede aprende a coloração da lâmina em vez da morfologia da célula
             transforms.ColorJitter(
                 brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05
             ),
@@ -188,18 +161,10 @@ class TrainingStrategy():
             label_space=label_space,
         )
 
-        # Balanceamento de classes (só no treino). Define ou um sampler
-        # (WeightedRandomSampler) ou um vetor de pesos para a loss — nunca os
-        # dois juntos, para não super-corrigir o desbalanceamento.
+        # Balanceamento de classes (só no treino)
         sampler = None
         class_weight_tensor = None
         if balance_strategy != "none":
-            # Rótulos (índice) de cada amostra de treino. train_data é um Subset
-            # de objetos Cell, então lemos os labels sem carregar imagem nenhuma.
-            # Os pesos do balanceamento seguem as classes DA TAREFA. Na tarefa de 3
-            # classes, por exemplo, o desbalanceamento cai de 42:1 para ~4,5:1,
-            # porque as lesões se agrupam — então os pesos têm de ser recalculados
-            # no espaço de rótulos certo, não no das 6 classes originais.
             train_labels = [
                 label_space.index(train_data[i].label)
                 for i in range(len(train_data))
@@ -207,9 +172,6 @@ class TrainingStrategy():
             class_counts = Counter(train_labels)
 
             if balance_strategy in ("sampler", "sampler_sqrt"):
-                # Peso por classe = inverso da frequência (ou da sua raiz, versão
-                # mais suave). O sampler sorteia com reposição segundo esses
-                # pesos, oversampling as raras e undersampling as comuns.
                 if balance_strategy == "sampler_sqrt":
                     class_weights = {c: 1.0 / math.sqrt(n) for c, n in class_counts.items()}
                 else:
@@ -218,12 +180,10 @@ class TrainingStrategy():
                 sample_weights = [class_weights[label] for label in train_labels]
                 sampler = WeightedRandomSampler(
                     weights=sample_weights,
-                    num_samples=len(sample_weights),  # mantém o tamanho da época
-                    replacement=True,                 # essencial para repetir as raras
+                    num_samples=len(sample_weights),
+                    replacement=True,
                 )
             elif balance_strategy == "weighted_loss":
-                # Pesos estilo 'balanced' do sklearn: total / (num_classes * count).
-                # Classes ausentes no treino recebem peso 0 (não contribuem).
                 total = len(train_labels)
                 weights = [
                     total / (num_classes * class_counts[c]) if class_counts.get(c, 0) > 0 else 0.0
@@ -237,18 +197,13 @@ class TrainingStrategy():
                 )
 
         # Criando dataloaders do PyTorch.
-        # num_workers > 0 paraleliza a decodificação das imagens em vários
-        # processos, evitando que a GPU fique ociosa esperando os dados.
-        # pin_memory só ajuda quando há GPU (acelera a cópia CPU -> GPU) e
-        # persistent_workers só faz sentido com workers (mantém os processos
-        # vivos entre épocas, evitando recriá-los toda vez).
         pin_memory = device.type == 'cuda'
         persistent_workers = num_workers > 0
 
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            shuffle=(sampler is None),  # shuffle só quando NÃO há sampler (são exclusivos)
+            shuffle=(sampler is None),
             sampler=sampler,
             num_workers=num_workers,
             pin_memory=pin_memory,
@@ -268,15 +223,10 @@ class TrainingStrategy():
         model = CellClassifier(dropout, num_classes)
         model.to(device)
 
-        # Havendo warm-up, a fase 1 congela a backbone INTEIRA e treina só a
-        # cabeça. Caso contrário, já entra na configuração definitiva.
+        # Havendo warm-up, a fase 1 congela. Caso contrário, já entra na configuração definitiva.
         model.set_backbone_trainable(0 if freeze_epochs > 0 else trainable_blocks)
 
-        # Dois grupos de parâmetros: a backbone (pré-treinada, só precisa de
-        # ajuste fino) anda num LR menor que a cabeça (pesos aleatórios, precisa
-        # aprender do zero). Os parâmetros congelados entram no otimizador desde
-        # já — sem gradiente, o AdamW simplesmente os ignora, e ao descongelar
-        # não é preciso reconstruí-lo.
+        # Dois grupos de parâmetros: a backbone e a cabeça
         optimizer = torch.optim.AdamW(
             [
                 {"params": model.cnn_features.parameters(), "lr": backbone_lr},
@@ -285,18 +235,10 @@ class TrainingStrategy():
             weight_decay=weight_decay,
         )
 
-        # Agendamento do LR reativo, não por cronograma fixo. Um cosseno exigiria
-        # saber de antemão quantas épocas o treino vai durar — mas quem decide isso
-        # é o early stopping, e um T_max errado deixaria o scheduler decorativo (ou,
-        # se o treino passasse dele, faria o LR voltar a SUBIR, já que o cosseno é
-        # periódico). O ReduceLROnPlateau reage ao próprio F1: quando ele empaca,
-        # corta o LR pela metade, dando ao modelo a chance de assentar num passo
-        # menor. Com patience=3 aqui e patience=10 no early stopping, o scheduler
-        # tem 2 ou 3 tentativas de destravar o platô antes do treino desistir.
-        # Ambos os grupos (backbone e cabeça) são cortados, mantendo a proporção.
+        # Agendamento do LR reativo.
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            mode='max',      # o F1 é para MAXIMIZAR (ao contrário de uma loss)
+            mode='max',
             factor=0.5,
             patience=3,
         )
@@ -306,25 +248,16 @@ class TrainingStrategy():
         )
 
         # Mixed precision (AMP): roda as convoluções em float16 e mantém em
-        # float32 só o que precisa de precisão (a loss, a atualização dos pesos).
-        # Aqui não é só velocidade: em 300x300 com batch 32, o pico de VRAM em
-        # float32 passa de 10 GB e não cabe na placa. Em vez de dar out-of-memory,
-        # o driver despeja o excedente na RAM do sistema — o treino não quebra,
-        # só fica ~12x mais lento. AMP corta o pico pela metade e o problema some.
-        # O GradScaler escala a loss antes do backward para que gradientes
-        # pequenos não virem zero na precisão reduzida.
+        # float32 só o que precisa de precisão
         use_amp = device.type == 'cuda'
         scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
         
         # Estado para early stopping e para guardar o melhor modelo.
-        # A seleção é feita pelo F1-macro (maximizar), mais robusto ao
-        # desbalanceamento das classes do que a val_loss. Guardamos também a
-        # val_loss da melhor época apenas para registro.
         best_f1 = float('-inf')
         best_epoch = 0
         best_model_state = copy.deepcopy(model.state_dict())
         epochs_no_improve = 0
-        # Predições/rótulos da melhor época, para a matriz de confusão e o relatório
+        
         best_preds = []
         best_labels = []
 
@@ -338,10 +271,6 @@ class TrainingStrategy():
 
         history = []
         for epoch in tqdm(range(num_epochs), desc='Train Progress: '):
-            # Fim do warm-up: aplica a configuração definitiva da backbone. A
-            # paciência do early stopping é zerada porque isto é, na prática, uma
-            # nova fase de treino — o F1 costuma oscilar logo após o descongelamento,
-            # e não queremos que essa oscilação consuma o orçamento da fase anterior.
             if freeze_epochs > 0 and epoch == freeze_epochs:
                 model.set_backbone_trainable(trainable_blocks)
                 epochs_no_improve = 0
@@ -350,9 +279,6 @@ class TrainingStrategy():
                     f'({count_trainable()/1e6:.2f}M params treináveis, lr={backbone_lr}).'
                 )
 
-            # Treinando pesos da rede. O train() sobrescrito em CellClassifier
-            # devolve os blocos congelados para eval(), preservando as
-            # estatísticas do BatchNorm.
             model.train()
 
             train_loss = 0
@@ -371,8 +297,6 @@ class TrainingStrategy():
                 optimizer.zero_grad()
 
                 # Atualizando os pesos e aplicando passo do backpropagation.
-                # Com AMP, o backward roda sobre a loss escalada e o scaler
-                # desfaz a escala antes do passo do otimizador.
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
                 scaler.update()
@@ -387,8 +311,8 @@ class TrainingStrategy():
                 loop_interno_val = tqdm(val_loader, leave=False, desc=' Validation Progress: ')
                 for images, labels in loop_interno_val:
                     images, labels = images.to(device), labels.to(device)
-                    # Forward pass na rede. Sem scaler: na validação não há
-                    # backward, então não há gradiente para escalar.
+                    
+                    # Forward pass na rede
                     with torch.amp.autocast('cuda', enabled=use_amp):
                         outputs = model(images)
                         loss = loss_func(outputs, labels)
@@ -404,11 +328,7 @@ class TrainingStrategy():
             avg_train_loss = train_loss / len(train_loader)
             avg_val_loss = val_loss / len(val_loader)
 
-            # Métricas de validação por classe. average=None retorna um array
-            # com o valor de cada classe; labels=range(num_classes) garante que
-            # todas as 6 classes apareçam sempre, na mesma ordem, mesmo que
-            # alguma não tenha amostras nesta época. zero_division=0 evita
-            # warning quando uma classe não recebe nenhuma predição.
+            # Métricas de validação por classe
             precision_pc, recall_pc, f1_pc, support_pc = precision_recall_fscore_support(
                 all_labels, all_preds,
                 labels=range(num_classes),
@@ -427,17 +347,13 @@ class TrainingStrategy():
                 for i in range(num_classes)
             }
 
-            # Métricas agregadas 'macro' = média simples entre as classes,
-            # tratando todas com o mesmo peso (bom quando são desbalanceadas).
+            # Métricas agregadas 'macro'
             precision = float(precision_pc.mean())
             recall = float(recall_pc.mean())
             f1 = float(f1_pc.mean())
 
             accuracy = float(np.mean(np.array(all_preds) == np.array(all_labels)))
 
-            # O scheduler é reativo: precisa da métrica que está monitorando. Por
-            # isso o step() vem aqui, depois do F1 calculado — e não logo após o
-            # laço de treino, como seria num scheduler de cronograma fixo.
             lr_antes = optimizer.param_groups[0]['lr']
             scheduler.step(f1)
             if optimizer.param_groups[0]['lr'] < lr_antes:
@@ -458,8 +374,7 @@ class TrainingStrategy():
                 "per_class": per_class,
             })
             
-            # Early stopping: guarda os melhores pesos quando o F1-macro melhora
-            # e para se ele não melhorar por `patience` épocas seguidas.
+            # Early stopping
             if f1 > best_f1 + min_delta:
                 best_f1 = f1
                 best_epoch = epoch + 1
@@ -479,8 +394,6 @@ class TrainingStrategy():
             
             
             if output_dir is not None:
-                # Salva a matriz de confusão e o relatório de classificação do melhor
-                # modelo, avaliado no conjunto de validação.
                 self._save_evaluation_artifacts(
                     output_dir=Path(output_dir),
                     labels=best_labels,
@@ -497,24 +410,17 @@ class TrainingStrategy():
                     best_epoch=best_epoch,
                 )
                 
-        # Restaura os pesos da melhor época (não os da última, que podem já
-        # estar em overfitting).
+        # Restaura os pesos da melhor época
         model.load_state_dict(best_model_state)
 
-        # A assinatura permite output_dir=None (treino sem artefatos), então todo
-        # acesso a ele precisa ser guardado — este bloco final não era, e quebrava.
         if output_dir is not None:
-            # Salva a curva de aprendizado (loss) e a evolução das métricas macro
-            # da última época.
             self._save_learning_curves(
                 history=history,
                 output_dir=Path(output_dir),
                 best_epoch=best_epoch,
             )
 
-            # Persiste o modelo da melhor época. O checkpoint carrega junto o
-            # label_space e a arquitetura: sem eles, um state_dict solto não diz a
-            # que tarefa pertence nem o que significa o índice 2 de uma predição.
+            # Persiste o modelo da melhor época
             checkpoint_path = Path(output_dir) / 'best_model.pt'
             torch.save(
                 {

@@ -13,9 +13,7 @@ from dataclasses import dataclass
 from torch.utils.data import Subset
 from sklearn.model_selection import StratifiedGroupKFold
 
-# Agrupamento clínico dos rótulos do sistema Bethesda. O corte entre baixo e alto
-# grau é o que decide conduta (repetir a citologia vs. encaminhar para colposcopia),
-# e é o agrupamento de 3 classes usado na literatura.
+
 NEGATIVE_LABEL = "Negative for intraepithelial lesion"
 LOW_GRADE_LABELS = ["ASC-US", "LSIL"]
 HIGH_GRADE_LABELS = ["ASC-H", "HSIL", "SCC"]
@@ -78,11 +76,7 @@ class DataProcessing:
 
         self.__process_data()
 
-        # O conjunto de teste é decidido AQUI, uma única vez. Antes ele nascia
-        # dentro do iterfolds(), o que fazia get_test_data() quebrar se ninguém
-        # tivesse iterado os folds primeiro — e refazia o split do teste a cada
-        # nova iteração. Ele não é efeito colateral de iterar folds: é uma
-        # propriedade da partição dos dados.
+        # Aqui definimos o conjunto de treino e teste
         self.__split_test_data(test_size=test_size)
     
     def __len__(self):

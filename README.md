@@ -1,5 +1,9 @@
 # 2026-1-P-cell-classification
 
+## Sobre
+
+Clique no [link](https://youtu.be/l_bRUnQDzzY) para ver a o vídeo de apresentação deste trabalho.
+
 ## Instalação
 
 Utilize o gerenciador de pacotes `uv` para instalar e gerir as dependênicas deste projeto.

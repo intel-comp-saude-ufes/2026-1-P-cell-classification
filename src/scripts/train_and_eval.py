@@ -21,10 +21,6 @@ from src.torch.utils.cross_validate import CrossValidation
 METADATA_PATH = Path("data/raw/classifications.csv")
 IMAGE_FOLDER_PATH = Path("data/raw/images")
 
-# Duas sementes, dois eixos independentes. RANDOM_STATE semeia o SPLIT (quais
-# lâminas caem no teste e como os folds se formam); TRAIN_SEED semeia o TREINO
-# (inicialização da cabeça, dropout, augmentation, sampler), e cada fold usa
-# TRAIN_SEED + fold.
 RANDOM_STATE = 5
 TRAIN_SEED = 42
 K_FOLDS = 5
@@ -54,43 +50,29 @@ def main():
         width=90,
         height=90,
         batch_size=32,
-        learning_rate=0.001,      # cabeça (fc): pesos aleatórios, aprende do zero
-        backbone_lr=0.0001,       # backbone: pré-treinada, só ajuste fino
-        # Backbone INTEIRA treinável. Congelar os blocos iniciais é a receita padrão
-        # em imagens naturais, mas aqui ela se inverte: o que separa ASC-H de HSIL é
-        # a granularidade da cromatina — textura de baixo/médio nível, justamente o
-        # que esses blocos codificam. Congelá-los travou o F1 em 0,47 (contra 0,56
-        # com tudo treinável), independentemente do learning rate.
+        learning_rate=0.001,
+        backbone_lr=0.0001,
         trainable_blocks=None,
-        freeze_epochs=2,          # warm-up: 2 épocas treinando só a cabeça
+        freeze_epochs=2,
         num_epochs=100,
-        # Precisa ser folgada o bastante para o ReduceLROnPlateau (patience=3) ter
-        # 2 ou 3 chances de destravar o platô antes do early stopping desistir.
         patience=10,
         dropout=0.5,
         num_workers=10,
         balance_strategy="sampler_sqrt",
-        label_smoothing=0.1,      # contra o excesso de confiança (val_loss subindo)
-        weight_decay=0.05,        # acima do default do AdamW (0.01)
+        label_smoothing=0.1,
+        weight_decay=0.05,
     )
 
     train_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # As três granularidades da mesma tarefa. Não são estágios encadeados: cada
-    # modelo é independente, treinado sobre TODAS as células, mudando só o alvo.
-    #
-    # Os splits são idênticos entre elas: iterfolds() estratifica sempre por
-    # `bethesda_system`, independente do espaço de rótulos, então os três modelos
-    # veem exatamente as mesmas lâminas em cada fold — e os três resultados são
-    # comparáveis no mesmo conjunto de teste.
+    # Definindo as tarefas
     tarefas = {
         "6_classes": data_processor.flat_label_space(),
         "3_classes": data_processor.grade_label_space(),
         "2_classes": data_processor.binary_label_space(),
     }
 
-    # O conjunto de teste é o mesmo para as três tarefas — separado por iterfolds()
-    # antes de qualquer fold, e nunca visto durante o treino nem a seleção.
+    # O conjunto de teste é o mesmo para as três tarefas 
     test_data = data_processor.get_test_data()
     logger.info(f"Conjunto de teste (intocado): {len(test_data)} células")
 
@@ -100,10 +82,7 @@ def main():
 
         output_dir = Path("outputs") / train_id / nome
 
-        # 1) Validação cruzada: estima o desempenho COM BARRA DE ERRO. Um treino
-        #    único daria um número sem desvio, e não dá para saber se a diferença
-        #    entre duas configurações é real ou é ruído — sobretudo aqui, onde o
-        #    F1-macro pesa igual uma classe de ~28 amostras e uma de ~1143.
+        # 1) Validação cruzada
         cross_val = CrossValidation(
             data_processor=data_processor,
             k_folds=K_FOLDS,
@@ -115,9 +94,7 @@ def main():
             output_dir=output_dir,
         )
 
-        # 2) Teste final. Medido UMA vez, no fim, com a configuração já decidida —
-        #    se o teste for consultado a cada ajuste, vira um segundo conjunto de
-        #    validação e a estimativa final fica otimista.
+        # 2) Avaliando no conjunto de teste
         logger.info(f"--- Avaliando '{nome}' no conjunto de teste")
         evaluator = Evaluator(data_processor=data_processor, label_space=label_space)
         teste = evaluator.evaluate(

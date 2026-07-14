@@ -38,8 +38,7 @@ METRICAS = (
     ('accuracy', 'Acurácia'),
 )
 
-# Largura das colunas de métrica nas tabelas .txt: o maior rótulo mais um espaço,
-# para que cabeçalho e valores caiam na mesma grade sem ninguém contar caractere.
+# Largura das colunas de métrica nas tabelas .txt
 LARGURA = max(len(rotulo) for _, rotulo in METRICAS) + 1
 
 
@@ -102,7 +101,7 @@ class Evaluator():
                 images = images.to(device)
                 with torch.amp.autocast('cuda', enabled=device.type == 'cuda'):
                     logits = model(images)
-                # float() antes do softmax: em fp16 a exponencial satura fácil.
+                
                 probs.append(torch.softmax(logits.float(), dim=1).cpu())
                 labels.append(y)
 
@@ -114,7 +113,6 @@ class Evaluator():
             data_processor=self.data_processor,
             width=hyperparameters.width,
             height=hyperparameters.height,
-            # Mesmo pré-processamento da validação: sem augmentation, determinístico.
             transform=build_eval_transform(),
             label_space=self.label_space,
         )
@@ -160,12 +158,9 @@ class Evaluator():
         por_modelo = []
 
         for i, checkpoint in enumerate(checkpoints, start=1):
-            # Um modelo por vez na GPU: os k não precisam coexistir.
             model, label_space = load_from_checkpoint(checkpoint)
 
-            # O checkpoint sabe a que tarefa pertence. Se ele não bater com a do
-            # Evaluator, as predições seriam interpretadas na chave errada — um
-            # índice 2 significaria "alto grau" num e "LSIL" noutro.
+            # Verificando para que um checkpoint não seja de uma tarefa diferente
             if label_space.names != class_names:
                 raise ValueError(
                     f'Checkpoint {checkpoint} é da tarefa {label_space.names}, '
@@ -182,9 +177,6 @@ class Evaluator():
             del model
             torch.cuda.empty_cache()
 
-        # Ensemble: média das PROBABILIDADES, não dos votos. Um modelo inseguro
-        # (0,4/0,35/0,25) contribui menos do que um confiante (0,9/0,05/0,05), o
-        # que não aconteceria numa votação simples.
         probs_ensemble = torch.stack(todas_probs).mean(dim=0)
         preds_ensemble = probs_ensemble.argmax(dim=1)
         metricas_ensemble = self._metrics(labels, preds_ensemble)

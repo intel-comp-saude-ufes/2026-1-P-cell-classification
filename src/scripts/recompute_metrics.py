@@ -34,14 +34,9 @@ from src.scripts.train_and_eval import (
 setup_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
-# Só afetam a velocidade da inferência, não o resultado.
 BATCH_SIZE = 32
 NUM_WORKERS = 10
 
-# Tolerância ao conferir o F1 recalculado contra o que o checkpoint registrou.
-# Não é zero porque a inferência roda em mixed precision, e a mesma soma em
-# float16 pode diferir na última casa. Qualquer diferença acima disto não é ruído
-# numérico: é o split ter sido reconstruído errado.
 TOLERANCIA = 1e-3
 
 
@@ -109,7 +104,6 @@ def _cross_validation(evaluator, data_processor, checkpoints, hyperparameters):
             checkpoints=[checkpoint],
             data=val_data,
             hyperparameters=hyperparameters,
-            # Sem output_dir: nada de sobrescrever os artefatos da run original.
             output_dir=None,
         )
         metricas = resultado['per_model'][0]
@@ -228,8 +222,7 @@ def main():
     for task_dir in tarefas:
         checkpoints = _checkpoints(task_dir)
 
-        # A tarefa vem do checkpoint, não do nome da pasta: ele é a única fonte
-        # que sabe o que o índice 2 de uma predição significa.
+        # A tarefa vem do checkpoint, não do nome da pasta
         _, label_space = load_from_checkpoint(checkpoints[0])
         evaluator = Evaluator(data_processor=data_processor, label_space=label_space)
         hyperparameters = _inference_hyperparameters(checkpoints[0])

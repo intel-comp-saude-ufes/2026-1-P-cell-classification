@@ -55,9 +55,6 @@ class CrossValidation():
 
         class_names = self.label_space.names
         folds = []
-        # Caminhos dos checkpoints, não os modelos em memória. O train() já os salva
-        # em disco, e apontar para eles mantém a avaliação desacoplada do treino: o
-        # teste pode rodar depois, noutro processo, sem retreinar nada.
         checkpoints = []
 
         with tqdm(total=self.k_folds, desc='Cross Validation') as pbar:
@@ -176,8 +173,6 @@ class CrossValidation():
             f'  F1-macro        : {agregado["f1_macro"]["mean"]:.4f} ± {agregado["f1_macro"]["std"]:.4f}',
             f'  Precision-macro : {agregado["precision_macro"]["mean"]:.4f} ± {agregado["precision_macro"]["std"]:.4f}',
             f'  Recall-macro    : {agregado["recall_macro"]["mean"]:.4f} ± {agregado["recall_macro"]["std"]:.4f}',
-            # A acurácia não é macro: pesa cada AMOSTRA igual, não cada classe.
-            # Num dataset desbalanceado ela é sempre a mais generosa das quatro.
             f'  Acurácia        : {agregado["accuracy"]["mean"]:.4f} ± {agregado["accuracy"]["std"]:.4f}',
             '',
             'F1 por classe (média ± desvio). Um desvio grande numa classe de suporte',
